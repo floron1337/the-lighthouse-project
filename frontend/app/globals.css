@@ -1,3 +1,110 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 220 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 12%;
+
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 10% 40%;
+
+    --primary: 220 80% 18%;
+    --primary-foreground: 40 33% 98%;
+
+    --secondary: 220 14% 95%;
+    --secondary-foreground: 220 25% 12%;
+
+    --accent: 38 95% 52%;
+    --accent-foreground: 220 25% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 38 95% 52%;
+
+    --bias-west: 215 90% 55%;
+    --bias-brics: 0 75% 55%;
+    --bias-neutral: 145 55% 42%;
+    --bias-government: 270 60% 55%;
+    --bias-mixed: 35 90% 52%;
+
+    --radius: 0.75rem;
+
+    --font-sans: 'Inter', ui-sans-serif, system-ui;
+    --font-display: 'Fraunces', Georgia, serif;
+  }
+
+  .dark {
+    --background: 220 30% 7%;
+    --foreground: 40 30% 95%;
+
+    --card: 220 25% 10%;
+    --card-foreground: 40 30% 95%;
+
+    --muted: 220 20% 14%;
+    --muted-foreground: 220 10% 65%;
+
+    --primary: 38 95% 60%;
+    --primary-foreground: 220 30% 7%;
+
+    --secondary: 220 20% 14%;
+    --secondary-foreground: 40 30% 95%;
+
+    --accent: 38 95% 60%;
+    --accent-foreground: 220 30% 7%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 18%;
+    --ring: 38 95% 60%;
+
+    --bias-west: 215 85% 65%;
+    --bias-brics: 0 70% 60%;
+    --bias-neutral: 145 50% 55%;
+    --bias-government: 270 60% 65%;
+    --bias-mixed: 35 90% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+  ::selection {
+    @apply bg-accent/40 text-foreground;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    font-feature-settings: "ss01", "salt";
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .gradient-radial {
+    background: radial-gradient(
+      ellipse at top,
+      hsl(var(--accent) / 0.12),
+      transparent 60%
+    );
+  }
+}
