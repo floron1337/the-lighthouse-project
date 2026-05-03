@@ -57,7 +57,7 @@ export default function RegionMap({ articles }: RegionMapProps) {
         </div>
       </div>
 
-      <div className="p-2 sm:p-4 bg-gradient-to-b from-muted/30 to-background">
+      <div className="p-2 sm:p-4 bg-gradient-to-b from-muted/40 to-background">
         <ComposableMap
           projection="geoEqualEarth"
           projectionConfig={{ scale: 155 }}
@@ -72,11 +72,11 @@ export default function RegionMap({ articles }: RegionMapProps) {
                 const data = counts.get(id);
                 const intensity = data ? data.count / maxCount : 0;
                 const fill = data
-                  ? `hsl(var(--accent) / ${0.35 + intensity * 0.55})`
-                  : "hsl(var(--muted))";
+                  ? `hsl(var(--accent) / ${0.45 + intensity * 0.5})`
+                  : "hsl(var(--muted-foreground) / 0.18)";
                 const stroke = data
                   ? "hsl(var(--accent))"
-                  : "hsl(var(--border))";
+                  : "hsl(var(--muted-foreground) / 0.45)";
 
                 const geography = (
                   <Geography
@@ -86,16 +86,16 @@ export default function RegionMap({ articles }: RegionMapProps) {
                       default: {
                         fill,
                         stroke,
-                        strokeWidth: data ? 0.6 : 0.3,
+                        strokeWidth: data ? 0.75 : 0.5,
                         outline: "none",
                         transition: "fill 200ms ease",
                       },
                       hover: {
                         fill: data
                           ? "hsl(var(--accent))"
-                          : "hsl(var(--muted-foreground) / 0.25)",
+                          : "hsl(var(--muted-foreground) / 0.35)",
                         stroke: "hsl(var(--accent))",
-                        strokeWidth: 0.8,
+                        strokeWidth: 0.9,
                         outline: "none",
                         cursor: data ? "pointer" : "default",
                       },
