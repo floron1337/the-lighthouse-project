@@ -28,15 +28,16 @@ Article to analyze:
 HEADLINE: {title}
 TEXT (first 2000 chars): {full_text}
 
-Analyze across these six dimensions:
-1. Framing — how does the headline/lede frame the story?
-2. Tone — emotional valence; provide a float from -1.0 (very negative) to +1.0 (very positive)
-3. Loaded language — list any politically charged terms (return as JSON array of strings)
-4. Omissions — what context do other sources typically cover that is absent here?
-5. Attribution — who is quoted? Is representation balanced?
-6. Overall bias direction — one of: "pro-Western", "pro-BRICS", "pro-government", "neutral", "mixed"
-
-Respond ONLY as JSON matching ArticleBiasAnalysis (no markdown fences).
+Respond ONLY with a flat JSON object using exactly these keys (no nesting, no markdown fences):
+{{
+  "overall_bias_direction": "<one of: pro-Western | pro-BRICS | pro-government | neutral | mixed>",
+  "confidence": <float 0.0–1.0>,
+  "framing_analysis": "<how headline/lede frames the story>",
+  "sentiment_score": <float -1.0 to +1.0>,
+  "loaded_terms": ["<charged term 1>", "<charged term 2>"],
+  "omissions": ["<missing context 1>"],
+  "attribution_balance": "<who is quoted and whether representation is balanced>"
+}}
 """
 
 BIAS_COMPARISON_PROMPT = """\

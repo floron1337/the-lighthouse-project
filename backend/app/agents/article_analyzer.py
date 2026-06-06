@@ -24,6 +24,23 @@ _BLOC_TO_DIRECTION: dict[str, str] = {
 
 _MAX_RETRIES = 3
 
+# All key variants the model might emit → canonical field name
+_KEY_ALIASES: dict[str, str] = {
+    "framing": "framing_analysis",
+    "Framing": "framing_analysis",
+    "tone": "sentiment_score",
+    "Tone": "sentiment_score",
+    "loaded_language": "loaded_terms",
+    "Loaded language": "loaded_terms",
+    "Loaded Language": "loaded_terms",
+    "attribution": "attribution_balance",
+    "Attribution": "attribution_balance",
+    "overall bias direction": "overall_bias_direction",
+    "Overall bias direction": "overall_bias_direction",
+    "Overall Bias Direction": "overall_bias_direction",
+    "bias_direction": "overall_bias_direction",
+}
+
 
 def _mock_analysis(article: Article, source_profile: dict) -> ArticleBiasAnalysis:
     alliance = source_profile.get("alliance_bloc", "Non-Aligned")
@@ -50,30 +67,40 @@ def _parse_response(raw: str, article: Article, source_profile: dict) -> Article
     cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     data: dict = json.loads(cleaned)
 
-    # Normalise field name variants the model might use
-    if "tone" in data and "sentiment_score" not in data:
-        data["sentiment_score"] = data.pop("tone")
-    if "loaded_language" in data and "loaded_terms" not in data:
-        data["loaded_terms"] = data.pop("loaded_language")
-    if "framing" in data and "framing_analysis" not in data:
-        data["framing_analysis"] = data.pop("framing")
-    if "attribution" in data and "attribution_balance" not in data:
-        data["attribution_balance"] = data.pop("attribution")
+    # Flatten if the model wrapped everything under a nested "analysis" key
+    if "analysis" in data and isinstance(data["analysis"], dict):
+        nested = data.pop("analysis")
+        for k, v in nested.items():
+            if k not in data:
+                data[k] = v
 
-    # Always set identity fields from known values
+    # Normalise all known key variants to canonical field names
+    for alias, canonical in _KEY_ALIASES.items():
+        if alias in data and canonical not in data:
+            data[canonical] = data.pop(alias)
+
+    # Identity fields always come from the article itself
     data["article_url"] = article.url
     data["source_id"] = article.source_id
 
-    # Ensure required numeric fields have sensible defaults
+    # Numeric field defaults
     if "confidence" not in data:
         data["confidence"] = 0.70
     if "sentiment_score" not in data:
         data["sentiment_score"] = 0.0
 
-    # Ensure list fields are actually lists
+    # List field defaults
     for field in ("loaded_terms", "omissions"):
         if field not in data or not isinstance(data[field], list):
             data[field] = []
+
+    # String field fallbacks so Pydantic never sees a missing required field
+    if not data.get("framing_analysis"):
+        data["framing_analysis"] = "No framing analysis available."
+    if not data.get("attribution_balance"):
+        data["attribution_balance"] = "No attribution data available."
+    if not data.get("overall_bias_direction"):
+        data["overall_bias_direction"] = "neutral"
 
     return ArticleBiasAnalysis.model_validate(data)
 
@@ -113,7 +140,10 @@ async def analyze(
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            raw = await llm_service.complete(prompt)
+            raw = await llm_service.complete(prompt, json_mode=True)
+            if not raw or not raw.strip():
+                logger.warning("Empty LLM response for article %s — using mock fallback", article.url)
+                return _mock_analysis(article, source_profile)
             return _parse_response(raw, article, source_profile)
         except (json.JSONDecodeError, ValidationError, KeyError) as exc:
             logger.warning("Article analysis parse error (attempt %d/%d): %s", attempt, _MAX_RETRIES, exc)

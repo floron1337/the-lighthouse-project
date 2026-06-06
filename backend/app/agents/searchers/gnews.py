@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -49,9 +50,10 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
         return []
 
     registry = load_registry()
+    safe_query = re.sub(r"[\"'`]", "", query).strip()
 
     params = {
-        "q": query,
+        "q": safe_query,
         "lang": "en",
         "max": 10,
         "token": key,
@@ -63,10 +65,13 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
             if resp.status_code == 429:
                 logger.warning("GNews rate limit hit for query: %s", query)
                 return []
+            if resp.status_code == 400:
+                logger.warning("GNews rejected query (400): %s", safe_query)
+                return []
             resp.raise_for_status()
             data = resp.json()
     except httpx.HTTPError as exc:
-        logger.error("GNews request failed: %s", exc)
+        logger.warning("GNews request failed: %s", exc)
         return []
 
     articles: list[Article] = []

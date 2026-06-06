@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from app.agents.prompts import QUERY_EXPANSION_PROMPT
+
+logger = logging.getLogger(__name__)
 from app.services.llm_service import LLMService
 
 
@@ -26,7 +29,11 @@ async def expand(query: str, llm_service: LLMService | None = None) -> list[str]
         return _fallback
 
     prompt = QUERY_EXPANSION_PROMPT.format(query=query)
-    raw = await llm_service.complete(prompt)
+    try:
+        raw = await llm_service.complete(prompt)
+    except Exception as exc:
+        logger.warning("Query expansion LLM call failed: %s — using fallback queries", exc)
+        return _fallback
 
     try:
         # Strip any accidental markdown fences the model may add

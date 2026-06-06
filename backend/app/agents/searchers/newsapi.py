@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -52,10 +53,11 @@ async def search_newsapi(query: str, api_key: str = "") -> list[Article]:
         return []
 
     registry = load_registry()
+    safe_query = re.sub(r"[\"'`]", "", query).strip()
     from_date = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
     params = {
-        "q": query,
+        "q": safe_query,
         "from": from_date,
         "language": "en",
         "sortBy": "publishedAt",
@@ -72,7 +74,7 @@ async def search_newsapi(query: str, api_key: str = "") -> list[Article]:
             resp.raise_for_status()
             data = resp.json()
     except httpx.HTTPError as exc:
-        logger.error("NewsAPI request failed: %s", exc)
+        logger.warning("NewsAPI request failed: %s", exc)
         return []
 
     articles: list[Article] = []

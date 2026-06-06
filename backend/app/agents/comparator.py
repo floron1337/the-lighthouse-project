@@ -90,7 +90,7 @@ async def compare(
     )
 
     try:
-        raw = await llm_service.complete(prompt)
+        raw = await llm_service.complete(prompt, json_mode=True)
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data: dict = json.loads(cleaned)
 

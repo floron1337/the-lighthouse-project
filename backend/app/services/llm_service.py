@@ -30,23 +30,32 @@ class LLMService:
         self._ollama_url = (ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
         self._model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(self, prompt: str, *, json_mode: bool = False) -> str:
         """Send *prompt* to Ollama and return the completion as a plain string.
 
         Uses Ollama's /api/generate endpoint with stream=false so the full
         response arrives in a single JSON object.
+
+        Args:
+            prompt: Full prompt string.
+            json_mode: When True, passes format="json" to Ollama, constraining
+                output to a valid JSON object. Use only when the prompt asks for
+                a JSON object (not an array) — misuse causes the model to loop.
         """
         if self.use_mock:
             return f"[mock LLM response for: {prompt[:60]}...]"
 
         import httpx  # noqa: PLC0415
 
-        payload = {
+        payload: dict = {
             "model": self._model,
             "prompt": prompt,
             "stream": False,
             "options": {"temperature": 0.2},
         }
+        if json_mode:
+            payload["format"] = "json"
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(f"{self._ollama_url}/api/generate", json=payload)
             response.raise_for_status()
