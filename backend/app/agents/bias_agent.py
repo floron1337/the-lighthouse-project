@@ -38,4 +38,4 @@ class BiasAnalystAgent:
             for article in bundle.articles
         ]
         analyses = list(await asyncio.gather(*tasks))
-        return compare(analyses, topic=bundle.query)
+        return await compare(analyses, topic=bundle.query, llm_service=self.llm_service)

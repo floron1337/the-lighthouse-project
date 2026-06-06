@@ -1,8 +1,32 @@
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime, timezone
 
+import httpx
+
+from app.agents.source_registry import load_registry
 from app.models.article import Article
+
+logger = logging.getLogger(__name__)
+
+_GNEWS_BASE = "https://gnews.io/api/v4/search"
+
+
+def _resolve_source(name: str, registry: list[dict]) -> tuple[str, str]:
+    """Map a source name to (source_id, country) from the registry.
+
+    Falls back to a slug + "XX" when no match is found.
+    """
+    name_lower = name.lower()
+    for entry in registry:
+        if entry["name"].lower() == name_lower:
+            return entry["id"], entry["country"]
+        if entry["name"].lower() in name_lower or name_lower in entry["name"].lower():
+            return entry["id"], entry["country"]
+    slug = name_lower.replace(" ", "_").replace(".", "")
+    return slug, "XX"
 
 
 async def search_gnews(query: str, api_key: str = "") -> list[Article]:
@@ -17,19 +41,57 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
         api_key: GNews key; reads from GNEWS_KEY env var if empty.
 
     Returns:
-        List of Article objects. Returns an empty list on quota exhaustion.
+        List of Article objects. Returns an empty list on quota exhaustion or
+        if no API key is configured.
     """
-    # TODO(THE-8): implement real GNews call with httpx.AsyncClient;
-    #              handle rate-limiting (10 req/day on free tier); map source names to IDs
-    return [
-        Article(
-            title=f"[GNews] Report: {query}",
-            full_text=f"Mock article text about '{query}' sourced from GNews.",
-            url=f"https://gnews.example.com/article?q={query.replace(' ', '+')}",
-            source_id="ap_news",
-            source_name="AP News",
-            country="US",
-            published_at=datetime.now(timezone.utc),
-            language="en",
+    key = api_key or os.getenv("GNEWS_KEY", "")
+    if not key:
+        return []
+
+    registry = load_registry()
+
+    params = {
+        "q": query,
+        "lang": "en",
+        "max": 10,
+        "token": key,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(_GNEWS_BASE, params=params)
+            if resp.status_code == 429:
+                logger.warning("GNews rate limit hit for query: %s", query)
+                return []
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as exc:
+        logger.error("GNews request failed: %s", exc)
+        return []
+
+    articles: list[Article] = []
+    for item in data.get("articles", []):
+        source_name = (item.get("source") or {}).get("name", "Unknown")
+        source_id, country = _resolve_source(source_name, registry)
+
+        try:
+            published_at = datetime.fromisoformat(
+                item["publishedAt"].replace("Z", "+00:00")
+            )
+        except (KeyError, ValueError):
+            published_at = datetime.now(timezone.utc)
+
+        articles.append(
+            Article(
+                title=item.get("title") or "",
+                full_text=item.get("content") or item.get("description") or "",
+                url=item.get("url") or "",
+                source_id=source_id,
+                source_name=source_name,
+                country=country,
+                published_at=published_at,
+                language="en",
+            )
         )
-    ]
+
+    return articles

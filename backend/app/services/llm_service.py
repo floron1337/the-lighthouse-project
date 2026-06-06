@@ -1,37 +1,54 @@
 from __future__ import annotations
 
+import json
+import os
+
 
 class LLMService:
-    """Wrapper around the Anthropic API for LLM completions.
+    """Shared LLM wrapper used by both the News Crawler and Bias Analyst agents.
 
-    In production (use_mock=False), calls Claude via the Anthropic SDK.
-    In development / tests (use_mock=True), returns a canned string without
-    making any network call.
+    In development / tests (use_mock=True or LLM_MOCK=true), returns a canned
+    string without any network call.  In production, sends the prompt to a local
+    Ollama instance via its REST API and returns the generated text.
+
+    Configuration (all optional — defaults work with a stock Ollama install):
+        OLLAMA_URL   – base URL of the Ollama daemon  (default: http://localhost:11434)
+        OLLAMA_MODEL – model tag to use               (default: llama3.2)
+        LLM_MOCK     – set to "true" to force mock mode (default: false)
     """
 
-    def __init__(self, *, use_mock: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        use_mock: bool | None = None,
+        ollama_url: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        if use_mock is None:
+            use_mock = os.getenv("LLM_MOCK", "false").lower() == "true"
         self.use_mock = use_mock
-        if not use_mock:
-            import os
-            import anthropic  # noqa: PLC0415
-            self._client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        self._ollama_url = (ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")).rstrip("/")
+        self._model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
 
     async def complete(self, prompt: str) -> str:
-        """Send a prompt to Claude and return the completion as a plain string.
+        """Send *prompt* to Ollama and return the completion as a plain string.
 
-        Args:
-            prompt: Full prompt string.
-
-        Returns:
-            Model response text.
-
-        Raises:
-            NotImplementedError: When use_mock=False (real calls not yet wired).
+        Uses Ollama's /api/generate endpoint with stream=false so the full
+        response arrives in a single JSON object.
         """
         if self.use_mock:
             return f"[mock LLM response for: {prompt[:60]}...]"
-        # TODO(THE-5): wire real anthropic claude-sonnet-4-6 call with streaming support
-        raise NotImplementedError(
-            "Real LLM calls are not yet implemented. "
-            "Use LLMService(use_mock=True) for development and tests."
-        )
+
+        import httpx  # noqa: PLC0415
+
+        payload = {
+            "model": self._model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.2},
+        }
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(f"{self._ollama_url}/api/generate", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data["response"]

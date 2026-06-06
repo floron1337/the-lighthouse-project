@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from app.agents.prompts import QUERY_EXPANSION_PROMPT
 from app.services.llm_service import LLMService
 
 
@@ -17,10 +20,20 @@ async def expand(query: str, llm_service: LLMService | None = None) -> list[str]
     Returns:
         List of 3–5 sub-query strings.
     """
-    # TODO(THE-7): replace mock with LLM-based expansion using llm_service.complete()
-    #              and prompts.QUERY_EXPANSION_PROMPT; parse the JSON array response
-    return [
-        query,
-        f"{query} latest news 2026",
-        f"{query} international reaction",
-    ]
+    _fallback = [query, f"{query} 2026", f"{query} international"]
+
+    if llm_service is None or llm_service.use_mock:
+        return _fallback
+
+    prompt = QUERY_EXPANSION_PROMPT.format(query=query)
+    raw = await llm_service.complete(prompt)
+
+    try:
+        # Strip any accidental markdown fences the model may add
+        cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        sub_queries: list[str] = json.loads(cleaned)
+        if not isinstance(sub_queries, list) or not sub_queries:
+            raise ValueError("expected non-empty list")
+        return [str(q) for q in sub_queries]
+    except (json.JSONDecodeError, ValueError):
+        return _fallback

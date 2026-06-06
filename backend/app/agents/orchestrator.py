@@ -24,7 +24,7 @@ async def process_query(query: str) -> AsyncGenerator[dict[str, Any], None]:
         query: Raw user query string from the search endpoint.
     """
     registry = load_registry()
-    llm = LLMService(use_mock=True)
+    llm = LLMService()
 
     # Phase 1 — Crawl (THE-7, THE-8, THE-9 implement the leaf functions)
     crawler = NewsCrawlerAgent(source_registry=registry, llm_service=llm)
