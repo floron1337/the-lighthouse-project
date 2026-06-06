@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 
 from pydantic import ValidationError
 
 from app.agents.prompts import BIAS_ANALYSIS_PROMPT
 from app.models.article import Article
-from app.models.bias_report import ArticleBiasAnalysis
+from app.models.bias_report import ArticleBiasAnalysis, PoliticalCompassPoint
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -41,24 +40,71 @@ _KEY_ALIASES: dict[str, str] = {
     "bias_direction": "overall_bias_direction",
 }
 
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _fallback_direction(source_profile: dict) -> str:
+    alliance = source_profile.get("alliance_bloc", "Non-Aligned")
+    return _BLOC_TO_DIRECTION.get(alliance, "neutral")
+
+
+def _default_compass(source_profile: dict) -> PoliticalCompassPoint:
+    baseline = source_profile.get("compass_baseline") or {}
+    return PoliticalCompassPoint(
+        economic_axis=_clamp(float(baseline.get("economic_axis", 0.0)), -1.0, 1.0),
+        social_axis=_clamp(float(baseline.get("social_axis", 0.0)), -1.0, 1.0),
+        regional_context=source_profile.get(
+            "regional_context",
+            "No regional context was available for this outlet.",
+        ),
+        label=str(baseline.get("label", "centrist / institutional")),
+        confidence=_clamp(float(baseline.get("confidence", 0.4)), 0.0, 1.0),
+    )
+
+
+def _normalise_compass(data: dict, source_profile: dict) -> dict:
+    compass = (
+        data.get("political_compass")
+        or data.get("political_compass_point")
+        or data.get("compass")
+        or {}
+    )
+    if not isinstance(compass, dict):
+        compass = {}
+
+    fallback = _default_compass(source_profile)
+    economic_axis = compass.get("economic_axis", compass.get("economic", compass.get("x")))
+    social_axis = compass.get("social_axis", compass.get("social", compass.get("y")))
+    confidence = compass.get("confidence", fallback.confidence)
+
+    return {
+        "economic_axis": _clamp(float(economic_axis if economic_axis is not None else fallback.economic_axis), -1.0, 1.0),
+        "social_axis": _clamp(float(social_axis if social_axis is not None else fallback.social_axis), -1.0, 1.0),
+        "regional_context": str(compass.get("regional_context") or fallback.regional_context),
+        "label": str(compass.get("label") or fallback.label),
+        "confidence": _clamp(float(confidence), 0.0, 1.0),
+    }
+
 
 def _mock_analysis(article: Article, source_profile: dict) -> ArticleBiasAnalysis:
     alliance = source_profile.get("alliance_bloc", "Non-Aligned")
     lean = source_profile.get("known_lean", "centre")
-    bias_direction = _BLOC_TO_DIRECTION.get(alliance, "neutral")
+    bias_direction = _fallback_direction(source_profile)
     return ArticleBiasAnalysis(
         article_url=article.url,
         source_id=article.source_id,
         overall_bias_direction=bias_direction,
-        confidence=round(random.uniform(0.60, 0.95), 2),
+        confidence=0.78,
         framing_analysis=(
             f"[Mock] {article.source_name} frames the story from a {lean} editorial "
             f"perspective aligned with the {alliance} bloc."
         ),
         loaded_terms=["[mock term A]", "[mock term B]"],
         omissions=["[mock omission]"],
-        sentiment_score=round(random.uniform(-0.5, 0.5), 2),
+        sentiment_score=0.0,
         attribution_balance="[Mock] Quotes primarily government officials.",
+        political_compass=_default_compass(source_profile),
     )
 
 
@@ -83,13 +129,14 @@ def _parse_response(raw: str, article: Article, source_profile: dict) -> Article
     data["article_url"] = article.url
     data["source_id"] = article.source_id
 
-    # Numeric field defaults
-    if "confidence" not in data:
-        data["confidence"] = 0.70
-    if "sentiment_score" not in data:
-        data["sentiment_score"] = 0.0
+    data["overall_bias_direction"] = data.get("overall_bias_direction") or _fallback_direction(source_profile)
+    data["framing_analysis"] = data.get("framing_analysis") or "No framing analysis returned by model."
+    data["attribution_balance"] = data.get("attribution_balance") or "No attribution analysis returned by model."
+    data["confidence"] = _clamp(float(data.get("confidence", 0.70)), 0.0, 1.0)
+    data["sentiment_score"] = _clamp(float(data.get("sentiment_score", 0.0)), -1.0, 1.0)
+    data["political_compass"] = _normalise_compass(data, source_profile)
 
-    # List field defaults
+    # Ensure list fields are actually lists
     for field in ("loaded_terms", "omissions"):
         if field not in data or not isinstance(data[field], list):
             data[field] = []
@@ -134,6 +181,8 @@ async def analyze(
         ownership=source_profile.get("ownership", "unknown"),
         known_lean=source_profile.get("known_lean", "unknown"),
         alliance_bloc=source_profile.get("alliance_bloc", "Non-Aligned"),
+        press_freedom_category=source_profile.get("press_freedom_category", "unknown"),
+        regional_context=source_profile.get("regional_context", "unknown regional context"),
         title=article.title,
         full_text=article.full_text[:2000],
     )
@@ -145,7 +194,7 @@ async def analyze(
                 logger.warning("Empty LLM response for article %s — using mock fallback", article.url)
                 return _mock_analysis(article, source_profile)
             return _parse_response(raw, article, source_profile)
-        except (json.JSONDecodeError, ValidationError, KeyError) as exc:
+        except (json.JSONDecodeError, ValidationError, KeyError, ValueError) as exc:
             logger.warning("Article analysis parse error (attempt %d/%d): %s", attempt, _MAX_RETRIES, exc)
 
     logger.error("All retries exhausted for article %s — using mock fallback", article.url)

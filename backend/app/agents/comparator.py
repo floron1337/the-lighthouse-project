@@ -90,7 +90,12 @@ async def compare(
     )
 
     try:
-        raw = await llm_service.complete(prompt, json_mode=True)
+        raw = await llm_service.complete(prompt)
+    except Exception as exc:
+        logger.error("Comparator LLM unavailable: %s — using mock fallback", exc)
+        return _mock_report(analyses, topic)
+
+    try:
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data: dict = json.loads(cleaned)
 

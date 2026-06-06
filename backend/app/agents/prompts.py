@@ -23,20 +23,43 @@ Source context:
 - Ownership: {ownership}
 - Known lean: {known_lean}
 - Alliance bloc: {alliance_bloc}
+- Press freedom category: {press_freedom_category}
+- Regional context: {regional_context}
 
 Article to analyze:
 HEADLINE: {title}
 TEXT (first 2000 chars): {full_text}
 
-Respond ONLY with a flat JSON object using exactly these keys (no nesting, no markdown fences):
+Analyze across these six dimensions:
+1. Framing — how does the headline/lede frame the story?
+2. Tone — emotional valence; provide a float from -1.0 (very negative) to +1.0 (very positive)
+3. Loaded language — list any politically charged terms (return as JSON array of strings)
+4. Omissions — what context do other sources typically cover that is absent here?
+5. Attribution — who is quoted? Is representation balanced?
+6. Overall bias direction — one of: "pro-Western", "pro-BRICS", "pro-government", "neutral", "mixed"
+7. Political compass placement — estimate how this article/source framing lands within its regional context:
+   - economic_axis: float from -1.0 (left/statist) to +1.0 (market/liberal)
+   - social_axis: float from -1.0 (authoritarian/conservative) to +1.0 (libertarian/progressive)
+   - regional_context: one sentence explaining the regional comparison
+   - label: short label such as "centrist / institutional"
+   - confidence: float from 0.0 to 1.0
+
+Respond ONLY as JSON matching ArticleBiasAnalysis (no markdown fences), including:
 {{
-  "overall_bias_direction": "<one of: pro-Western | pro-BRICS | pro-government | neutral | mixed>",
-  "confidence": <float 0.0–1.0>,
-  "framing_analysis": "<how headline/lede frames the story>",
-  "sentiment_score": <float -1.0 to +1.0>,
-  "loaded_terms": ["<charged term 1>", "<charged term 2>"],
-  "omissions": ["<missing context 1>"],
-  "attribution_balance": "<who is quoted and whether representation is balanced>"
+  "overall_bias_direction": "...",
+  "confidence": 0.0,
+  "framing_analysis": "...",
+  "loaded_terms": [],
+  "omissions": [],
+  "sentiment_score": 0.0,
+  "attribution_balance": "...",
+  "political_compass": {{
+    "economic_axis": 0.0,
+    "social_axis": 0.0,
+    "regional_context": "...",
+    "label": "...",
+    "confidence": 0.0
+  }}
 }}
 """
 

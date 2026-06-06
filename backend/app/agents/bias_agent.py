@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
-from app.agents.article_analyzer import analyze
+from app.agents.article_analyzer import _mock_analysis, analyze
 from app.agents.comparator import compare
 from app.agents.source_profiler import get_source_profile
 from app.models.article import ArticleBundle
-from app.models.bias_report import BiasReport
+from app.models.bias_report import ArticleBiasAnalysis, BiasReport
 from app.services.llm_service import LLMService
+
+logger = logging.getLogger(__name__)
 
 
 class BiasAnalystAgent:
@@ -29,13 +32,28 @@ class BiasAnalystAgent:
 
         Returns a BiasReport with per-article analyses and cross-source findings.
         """
+        source_profiles = [
+            get_source_profile(article.source_id, self.source_registry)
+            for article in bundle.articles
+        ]
         tasks = [
             analyze(
                 article=article,
-                source_profile=get_source_profile(article.source_id, self.source_registry),
+                source_profile=source_profile,
                 llm_service=self.llm_service,
             )
-            for article in bundle.articles
+            for article, source_profile in zip(bundle.articles, source_profiles)
         ]
-        analyses = list(await asyncio.gather(*tasks))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        analyses: list[ArticleBiasAnalysis] = []
+        for article, source_profile, result in zip(bundle.articles, source_profiles, results):
+            if isinstance(result, Exception):
+                logger.warning(
+                    "Article analysis task failed for %s — using mock fallback: %s",
+                    article.url,
+                    result,
+                )
+                analyses.append(_mock_analysis(article, source_profile))
+            else:
+                analyses.append(result)
         return await compare(analyses, topic=bundle.query, llm_service=self.llm_service)
