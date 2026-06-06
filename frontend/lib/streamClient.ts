@@ -13,6 +13,14 @@ export interface Article {
   translated_text: string | null;
 }
 
+export interface PoliticalCompassPoint {
+  economic_axis: number;
+  social_axis: number;
+  regional_context: string;
+  label: string;
+  confidence: number;
+}
+
 export interface ArticleBiasAnalysis {
   article_url: string;
   source_id: string;
@@ -23,6 +31,7 @@ export interface ArticleBiasAnalysis {
   omissions: string[];
   sentiment_score: number;
   attribution_balance: string;
+  political_compass?: PoliticalCompassPoint | null;
 }
 
 export interface DisputedFraming {
