@@ -30,16 +30,21 @@ def _resolve_source(name: str, registry: list[dict]) -> tuple[str, str]:
     return slug, "XX"
 
 
-async def search_gnews(query: str, api_key: str = "") -> list[Article]:
+async def search_gnews(
+    query: str,
+    api_key: str = "",
+    language: str = "en",
+) -> list[Article]:
     """Search the GNews API /v4/search for articles matching query.
 
-    Queries for English-language results, maps results to Article, and
+    Queries for results in the requested language, maps results to Article, and
     falls back gracefully if the API key is missing or quota is exhausted.
     Requires GNEWS_KEY environment variable to be set.
 
     Args:
         query: Search string (one of the sub-queries from query_expander).
         api_key: GNews key; reads from GNEWS_KEY env var if empty.
+        language: ISO language code supported by GNews.
 
     Returns:
         List of Article objects. Returns an empty list on quota exhaustion or
@@ -53,8 +58,8 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
     safe_query = re.sub(r"[\"'`]", "", query).strip()
 
     params = {
-        "q": safe_query,
-        "lang": "en",
+        "q": query,
+        "lang": language,
         "max": 10,
         "token": key,
     }
@@ -95,7 +100,7 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
                 source_name=source_name,
                 country=country,
                 published_at=published_at,
-                language="en",
+                language=language,
             )
         )
 

@@ -47,13 +47,18 @@ async def expand(query: str, llm_service: LLMService | None = None) -> list[str]
             return [str(q) for q in sub_queries]
         except Exception as exc:
             if attempt == _MAX_RETRIES:
-                logger.warning("Query expansion LLM unavailable, using fallback queries: %s", exc)
+                logger.warning(
+                    "Query expansion LLM unavailable, using fallback queries: %s: %r",
+                    type(exc).__name__,
+                    exc,
+                )
                 return _fallback
 
             logger.warning(
-                "Query expansion LLM failed (attempt %d/%d), retrying: %s",
+                "Query expansion LLM failed (attempt %d/%d), retrying: %s: %r",
                 attempt,
                 _MAX_RETRIES,
+                type(exc).__name__,
                 exc,
             )
             await asyncio.sleep(_RETRY_DELAY_SECONDS)

@@ -56,4 +56,10 @@ class BiasAnalystAgent:
                 analyses.append(_mock_analysis(article, source_profile))
             else:
                 analyses.append(result)
-        return await compare(analyses, topic=bundle.query, llm_service=self.llm_service)
+        return await compare(
+            analyses,
+            topic=bundle.query,
+            llm_service=self.llm_service,
+            articles=bundle.articles,
+            source_profiles=source_profiles,
+        )
