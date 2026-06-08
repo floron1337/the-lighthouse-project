@@ -7,6 +7,7 @@ import ArticleCard from "@/components/ArticleCard";
 import BiasReportPanel from "@/components/BiasReportPanel";
 import SearchBar from "@/components/SearchBar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Toast } from "@/components/Toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { countryFlag } from "@/lib/utils";
 import {
@@ -15,6 +16,13 @@ import {
   BiasReport,
   streamSearch,
 } from "@/lib/streamClient";
+
+import { useEffect } from "react";
+
+type ToastState =
+  | { kind: "empty"; query: string }
+  | { kind: "error"; message: string }
+  | null;
 
 const RegionMap = dynamic(() => import("@/components/RegionMap"), {
   ssr: false,
@@ -37,6 +45,7 @@ export default function HomePage() {
   const [biasReport, setBiasReport] = useState<BiasReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
 
   const handleSearch = useCallback(async (q: string) => {
     setStatus("streaming");
@@ -46,6 +55,7 @@ export default function HomePage() {
     setBiasReport(null);
     setError(null);
     setSelectedCountry(null);
+    setToast(null);
 
     try {
       for await (const event of streamSearch(q)) {
@@ -68,14 +78,22 @@ export default function HomePage() {
       }
       setStatus("done");
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Could not reach the backend. Is it running on port 8000?"
-      );
+          : "Could not reach the backend. Is it running on port 8000?";
+      setError(message);
       setStatus("error");
+      setToast({ kind: "error", message });
     }
   }, []);
+
+  // Pop up a toast when streaming finishes with zero articles.
+  useEffect(() => {
+    if (status === "done" && articles.length === 0 && query) {
+      setToast({ kind: "empty", query });
+    }
+  }, [status, articles.length, query]);
 
   const isSearching = status === "streaming";
   const hasResults = articles.length > 0;
@@ -244,6 +262,27 @@ export default function HomePage() {
         {status === "idle" && <EmptyState />}
       </div>
 
+      <Toast
+        open={toast !== null}
+        tone={toast?.kind === "error" ? "warning" : "info"}
+        title={
+          toast?.kind === "empty"
+            ? "No relevant news found"
+            : toast?.kind === "error"
+            ? "Search couldn’t complete"
+            : ""
+        }
+        description={
+          toast?.kind === "empty"
+            ? `No articles came back for “${toast.query}”. The topic may be too narrow, or NewsAPI / GNews may be rate-limited or unreachable right now.`
+            : toast?.kind === "error"
+            ? toast.message
+            : undefined
+        }
+        durationMs={6000}
+        onDismiss={() => setToast(null)}
+      />
+
       <footer className="border-t mt-auto">
         <div className="container flex flex-col sm:flex-row items-center justify-between gap-3 py-6 text-xs text-muted-foreground">
           <span>
@@ -252,7 +291,7 @@ export default function HomePage() {
           </span>
           <span className="flex items-center gap-1.5">
             <Lightbulb className="h-3.5 w-3.5 text-accent" />
-            Powered by Claude · NewsAPI · GNews
+            Powered by Ollama · NewsAPI · GNews (and opus 4.8 uwu)
           </span>
         </div>
       </footer>

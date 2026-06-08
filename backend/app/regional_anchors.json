@@ -1,0 +1,83 @@
+[
+  {
+    "id": "global",
+    "name": "Global median",
+    "short_name": "Global",
+    "flag": "🌐",
+    "economic_axis": 0.0,
+    "social_axis": 0.0,
+    "description": "Neutral baseline — no regional anchoring applied."
+  },
+  {
+    "id": "us",
+    "name": "United States median",
+    "short_name": "US",
+    "flag": "🇺🇸",
+    "economic_axis": 0.25,
+    "social_axis": -0.10,
+    "description": "Market-leaning economy with a slightly authoritarian centre by global standards."
+  },
+  {
+    "id": "eu",
+    "name": "EU median",
+    "short_name": "EU",
+    "flag": "🇪🇺",
+    "economic_axis": -0.20,
+    "social_axis": 0.15,
+    "description": "Social-market consensus, slightly libertarian on civil liberties."
+  },
+  {
+    "id": "uk",
+    "name": "United Kingdom median",
+    "short_name": "UK",
+    "flag": "🇬🇧",
+    "economic_axis": 0.05,
+    "social_axis": 0.05,
+    "description": "Centre on both axes — close to global baseline."
+  },
+  {
+    "id": "ru",
+    "name": "Russia median",
+    "short_name": "Russia",
+    "flag": "🇷🇺",
+    "economic_axis": -0.10,
+    "social_axis": -0.55,
+    "description": "Mixed economy with strongly authoritarian social posture."
+  },
+  {
+    "id": "cn",
+    "name": "China median",
+    "short_name": "China",
+    "flag": "🇨🇳",
+    "economic_axis": -0.30,
+    "social_axis": -0.65,
+    "description": "State-led economy with a strongly authoritarian baseline."
+  },
+  {
+    "id": "in",
+    "name": "India median",
+    "short_name": "India",
+    "flag": "🇮🇳",
+    "economic_axis": 0.10,
+    "social_axis": -0.25,
+    "description": "Market-leaning economy with socially conservative median."
+  },
+  {
+    "id": "br",
+    "name": "Brazil median",
+    "short_name": "Brazil",
+    "flag": "🇧🇷",
+    "economic_axis": -0.10,
+    "social_axis": -0.20,
+    "description": "Mixed economy with a moderately conservative social baseline."
+  },
+  {
+    "id": "mena",
+    "name": "MENA median",
+    "short_name": "MENA",
+    "flag": "🌍",
+    "economic_axis": 0.0,
+    "social_axis": -0.45,
+    "description": "Wide mix economically; predominantly authoritarian-leaning socially."
+  }
+]
