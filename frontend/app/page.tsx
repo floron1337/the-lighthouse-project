@@ -2,12 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
-import { Lightbulb, Loader2, Newspaper, AlertCircle } from "lucide-react";
+import { Lightbulb, Loader2, Newspaper, AlertCircle, X } from "lucide-react";
 import ArticleCard from "@/components/ArticleCard";
 import BiasReportPanel from "@/components/BiasReportPanel";
 import SearchBar from "@/components/SearchBar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent } from "@/components/ui/card";
+import { countryFlag } from "@/lib/utils";
 import {
   Article,
   ArticleBiasAnalysis,
@@ -35,6 +36,7 @@ export default function HomePage() {
   );
   const [biasReport, setBiasReport] = useState<BiasReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
   const handleSearch = useCallback(async (q: string) => {
     setStatus("streaming");
@@ -43,6 +45,7 @@ export default function HomePage() {
     setAnalyses(new Map());
     setBiasReport(null);
     setError(null);
+    setSelectedCountry(null);
 
     try {
       for await (const event of streamSearch(q)) {
@@ -76,6 +79,11 @@ export default function HomePage() {
 
   const isSearching = status === "streaming";
   const hasResults = articles.length > 0;
+
+  const filteredArticles = useMemo(
+    () => selectedCountry ? articles.filter((a) => a.country.toUpperCase() === selectedCountry) : articles,
+    [articles, selectedCountry]
+  );
 
   const stats = useMemo(() => {
     const countries = new Set(articles.map((a) => a.country)).size;
@@ -154,7 +162,11 @@ export default function HomePage() {
 
         {hasResults && (
           <>
-            <RegionMap articles={articles} />
+            <RegionMap
+              articles={articles}
+              selectedCountry={selectedCountry}
+              onCountryClick={setSelectedCountry}
+            />
 
             <section className="flex flex-col gap-4">
               <header className="flex items-end justify-between gap-3 border-b pb-3">
@@ -181,21 +193,39 @@ export default function HomePage() {
                     )}
                   </p>
                 </div>
-                {isSearching && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Streaming…
-                  </span>
-                )}
+                <div className="flex items-center gap-3">
+                  {selectedCountry && (
+                    <button
+                      onClick={() => setSelectedCountry(null)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
+                    >
+                      <span aria-hidden="true">{countryFlag(selectedCountry)}</span>
+                      {selectedCountry}
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                  {isSearching && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Streaming…
+                    </span>
+                  )}
+                </div>
               </header>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {articles.map((article) => (
+                {filteredArticles.map((article) => (
                   <ArticleCard
                     key={article.url}
                     article={article}
                     analysis={analyses.get(article.url)}
                   />
                 ))}
+                {filteredArticles.length === 0 && selectedCountry && (
+                  <p className="col-span-full text-sm text-muted-foreground py-6 text-center">
+                    No articles from{" "}
+                    <span className="font-medium text-foreground">{selectedCountry}</span> for this query.
+                  </p>
+                )}
               </div>
             </section>
 

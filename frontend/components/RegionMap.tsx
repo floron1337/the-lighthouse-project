@@ -20,15 +20,17 @@ const GEO_URL =
 
 interface RegionMapProps {
   articles: Article[];
+  selectedCountry?: string | null;
+  onCountryClick?: (iso2: string | null) => void;
 }
 
-export default function RegionMap({ articles }: RegionMapProps) {
+export default function RegionMap({ articles, selectedCountry, onCountryClick }: RegionMapProps) {
   const counts = React.useMemo(() => {
-    const m = new Map<string, { count: number; sources: Set<string> }>();
+    const m = new Map<string, { count: number; sources: Set<string>; iso2: string }>();
     for (const a of articles) {
       const id = iso2ToNumeric(a.country);
       if (!id) continue;
-      const existing = m.get(id) ?? { count: 0, sources: new Set<string>() };
+      const existing = m.get(id) ?? { count: 0, sources: new Set<string>(), iso2: a.country.toUpperCase() };
       existing.count += 1;
       existing.sources.add(a.source_name);
       m.set(id, existing);
@@ -70,25 +72,35 @@ export default function RegionMap({ articles }: RegionMapProps) {
               geographies.map((geo) => {
                 const id = String(geo.id).padStart(3, "0");
                 const data = counts.get(id);
+                const isSelected = data != null && selectedCountry === data.iso2;
+                const isDimmed = selectedCountry != null && !isSelected;
                 const intensity = data ? data.count / maxCount : 0;
-                const fill = data
-                  ? `hsl(var(--accent) / ${0.45 + intensity * 0.5})`
-                  : "hsl(var(--muted-foreground) / 0.18)";
-                const stroke = data
+                const fill = isSelected
                   ? "hsl(var(--accent))"
+                  : data
+                  ? `hsl(var(--accent) / ${isDimmed ? 0.2 : 0.45 + intensity * 0.5})`
+                  : `hsl(var(--muted-foreground) / ${isDimmed ? 0.08 : 0.18})`;
+                const stroke = isSelected
+                  ? "hsl(var(--accent))"
+                  : data
+                  ? `hsl(var(--accent) / ${isDimmed ? 0.3 : 1})`
                   : "hsl(var(--muted-foreground) / 0.45)";
 
                 const geography = (
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
+                    onClick={() => {
+                      if (!data || !onCountryClick) return;
+                      onCountryClick(isSelected ? null : data.iso2);
+                    }}
                     style={{
                       default: {
                         fill,
                         stroke,
-                        strokeWidth: data ? 0.75 : 0.5,
+                        strokeWidth: isSelected ? 1 : data ? 0.75 : 0.5,
                         outline: "none",
-                        transition: "fill 200ms ease",
+                        transition: "fill 150ms ease",
                       },
                       hover: {
                         fill: data
