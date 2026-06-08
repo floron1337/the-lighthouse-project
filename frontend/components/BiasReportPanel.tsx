@@ -37,13 +37,25 @@ import { PoliticalCompass } from "@/components/PoliticalCompass";
 interface BiasReportPanelProps {
   report: BiasReport;
   articles: Article[];
+  isLoading?: boolean;
 }
 
 export default function BiasReportPanel({
   report,
   articles,
+  isLoading = false,
 }: BiasReportPanelProps) {
   const articleBySource = new Map(articles.map((a) => [a.url, a]));
+
+  const visibleDisputedFramings = report.disputed_framings.filter(
+    (d) => (d.framing ?? "").trim().length > 0
+  );
+  const visibleGeopoliticalPatterns = report.geopolitical_patterns.filter(
+    (p) => (p ?? "").trim().length > 0
+  );
+  const visibleConsensusFacts = report.consensus_facts.filter(
+    (f) => (f ?? "").trim().length > 0
+  );
 
   return (
     <Card className="overflow-hidden border-accent/30">
@@ -83,20 +95,26 @@ export default function BiasReportPanel({
                 label="Balanced Summary"
                 hint="Generated neutral synthesis"
               />
-              <p className="mt-3 text-base leading-relaxed text-foreground/90 text-balance">
-                {report.balanced_summary}
-              </p>
+              {(report.balanced_summary ?? "").trim().length > 0 ? (
+                <p className="mt-3 text-base leading-relaxed text-foreground/90 text-balance">
+                  {report.balanced_summary}
+                </p>
+              ) : isLoading ? (
+                <PatternSkeleton variant="line" count={3} />
+              ) : (
+                <EmptyHint>No balanced summary was generated.</EmptyHint>
+              )}
             </section>
 
-            {report.consensus_facts.length > 0 && (
-              <section>
-                <SectionHeader
-                  icon={<CheckCircle2 className="h-4 w-4" />}
-                  label="Consensus Facts"
-                  hint={`Reported by most sources`}
-                />
+            <section>
+              <SectionHeader
+                icon={<CheckCircle2 className="h-4 w-4" />}
+                label="Consensus Facts"
+                hint="Reported by most sources"
+              />
+              {visibleConsensusFacts.length > 0 ? (
                 <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {report.consensus_facts.map((fact, i) => (
+                  {visibleConsensusFacts.map((fact, i) => (
                     <li
                       key={i}
                       className="flex gap-2 rounded-lg border bg-bias-neutral/5 px-3 py-2 text-sm"
@@ -106,8 +124,12 @@ export default function BiasReportPanel({
                     </li>
                   ))}
                 </ul>
-              </section>
-            )}
+              ) : isLoading ? (
+                <PatternSkeleton variant="line" count={2} />
+              ) : (
+                <EmptyHint>No consensus facts identified.</EmptyHint>
+              )}
+            </section>
           </TabsContent>
 
           <TabsContent value="spectrum" className="px-6 pb-6 mt-5 space-y-8">
@@ -159,50 +181,59 @@ export default function BiasReportPanel({
           </TabsContent>
 
           <TabsContent value="patterns" className="px-6 pb-6 mt-5 space-y-6">
-            {report.disputed_framings.length > 0 && (
-              <section>
-                <SectionHeader
-                  icon={<GitCompareArrows className="h-4 w-4" />}
-                  label="Disputed Framings"
-                  hint="Same event, different angles"
-                />
+            <section>
+              <SectionHeader
+                icon={<GitCompareArrows className="h-4 w-4" />}
+                label="Disputed Framings"
+                hint="Same event, different angles"
+              />
+              {visibleDisputedFramings.length > 0 ? (
                 <div className="mt-3 grid gap-3">
-                  {report.disputed_framings.map((item, i) => (
-                    <div
-                      key={i}
-                      className="rounded-lg border bg-card/50 p-4 hover:border-accent/40 transition-colors"
-                    >
-                      <p className="font-medium text-foreground">
-                        “{item.framing}”
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-                        <Badge variant="mixed" className="font-normal">
-                          {item.geopolitical_pattern}
-                        </Badge>
-                        {item.sources_using_it.length > 0 && (
-                          <span>
-                            Used by:{" "}
-                            <span className="text-foreground/80 font-medium">
-                              {item.sources_using_it.join(", ")}
+                  {visibleDisputedFramings.map((item, i) => {
+                    const pattern = (item.geopolitical_pattern ?? "").trim();
+                    return (
+                      <div
+                        key={i}
+                        className="rounded-lg border bg-card/50 p-4 hover:border-accent/40 transition-colors"
+                      >
+                        <p className="font-medium text-foreground">
+                          “{item.framing}”
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                          {pattern && (
+                            <Badge variant="mixed" className="font-normal">
+                              {pattern}
+                            </Badge>
+                          )}
+                          {item.sources_using_it.length > 0 && (
+                            <span>
+                              Used by:{" "}
+                              <span className="text-foreground/80 font-medium">
+                                {item.sources_using_it.join(", ")}
+                              </span>
                             </span>
-                          </span>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-              </section>
-            )}
+              ) : isLoading ? (
+                <PatternSkeleton variant="card" count={2} />
+              ) : (
+                <EmptyHint>No disputed framings detected.</EmptyHint>
+              )}
+            </section>
 
-            {report.geopolitical_patterns.length > 0 && (
-              <section>
-                <SectionHeader
-                  icon={<Globe2 className="h-4 w-4" />}
-                  label="Geopolitical Patterns"
-                  hint="Cross-source observations"
-                />
+            <section>
+              <SectionHeader
+                icon={<Globe2 className="h-4 w-4" />}
+                label="Geopolitical Patterns"
+                hint="Cross-source observations"
+              />
+              {visibleGeopoliticalPatterns.length > 0 ? (
                 <ul className="mt-3 space-y-2">
-                  {report.geopolitical_patterns.map((p, i) => (
+                  {visibleGeopoliticalPatterns.map((p, i) => (
                     <li
                       key={i}
                       className="flex gap-3 rounded-lg border-l-2 border-accent/60 bg-accent/5 px-4 py-3 text-sm"
@@ -213,8 +244,14 @@ export default function BiasReportPanel({
                     </li>
                   ))}
                 </ul>
-              </section>
-            )}
+              ) : isLoading ? (
+                <PatternSkeleton variant="line" count={2} />
+              ) : (
+                <EmptyHint>
+                  No cross-source geopolitical pattern identified.
+                </EmptyHint>
+              )}
+            </section>
           </TabsContent>
 
           <TabsContent value="methodology" className="px-6 pb-6 mt-5">
@@ -269,6 +306,51 @@ function SectionHeader({
         <span className="text-xs text-muted-foreground">{hint}</span>
       )}
     </div>
+  );
+}
+
+function PatternSkeleton({
+  variant,
+  count = 2,
+}: {
+  variant: "card" | "line";
+  count?: number;
+}) {
+  return (
+    <div
+      className="mt-3 space-y-2"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading analysis…"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "relative overflow-hidden rounded-lg border bg-muted/30",
+            variant === "card" ? "h-20" : "h-10 border-l-2 border-accent/40"
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-accent/15 to-transparent animate-shimmer"
+            style={{ backgroundSize: "200% 100%" }}
+          />
+        </div>
+      ))}
+      <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+        Synthesizing patterns from the analyses…
+      </p>
+    </div>
+  );
+}
+
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-3 text-sm text-muted-foreground border border-dashed rounded-lg px-4 py-3">
+      {children}
+    </p>
   );
 }
 
