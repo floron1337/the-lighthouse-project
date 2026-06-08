@@ -291,7 +291,7 @@ export default function HomePage() {
           </span>
           <span className="flex items-center gap-1.5">
             <Lightbulb className="h-3.5 w-3.5 text-accent" />
-            Powered by Claude · NewsAPI · GNews
+            Powered by Ollama · NewsAPI · GNews (and opus 4.8 uwu)
           </span>
         </div>
       </footer>
