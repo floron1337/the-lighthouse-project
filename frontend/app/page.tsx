@@ -231,7 +231,11 @@ export default function HomePage() {
 
             {biasReport && (
               <section className="animate-fade-in">
-                <BiasReportPanel report={biasReport} articles={articles} />
+                <BiasReportPanel
+                  report={biasReport}
+                  articles={articles}
+                  isLoading={isSearching}
+                />
               </section>
             )}
           </>
