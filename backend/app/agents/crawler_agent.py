@@ -310,10 +310,23 @@ class NewsCrawlerAgent:
 
         for q in sub_queries:
             newsapi_language = None if "ro" in languages else "en"
-            raw_articles.extend(await search_newsapi(q, language=newsapi_language))
+            raw_articles.extend(
+                await search_newsapi(
+                    q,
+                    language=newsapi_language,
+                    llm_service=self.llm_service,
+                )
+            )
 
             gnews_results = await asyncio.gather(
-                *(search_gnews(q, language=language) for language in languages),
+                *(
+                    search_gnews(
+                        q,
+                        language=language,
+                        llm_service=self.llm_service,
+                    )
+                    for language in languages
+                ),
                 return_exceptions=True,
             )
             for result in gnews_results:

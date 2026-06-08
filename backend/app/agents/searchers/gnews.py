@@ -7,8 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.agents.source_registry import resolve_source_name
+from app.agents.source_registry import resolve_source_name_with_llm
 from app.models.article import Article
+from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ async def search_gnews(
     query: str,
     api_key: str = "",
     language: str = "en",
+    llm_service: LLMService | None = None,
 ) -> list[Article]:
     """Search the GNews API /v4/search for articles matching query.
 
@@ -86,7 +88,12 @@ async def search_gnews(
     articles: list[Article] = []
     for item in data.get("articles", []):
         source_name = (item.get("source") or {}).get("name", "Unknown")
-        source_id, country = resolve_source_name(source_name)
+        source_id, country = await resolve_source_name_with_llm(
+            source_name,
+            llm_service=llm_service,
+            url=item.get("url") or "",
+            title=item.get("title") or "",
+        )
 
         try:
             published_at = datetime.fromisoformat(
