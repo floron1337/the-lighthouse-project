@@ -52,7 +52,6 @@ class LLMService:
             "prompt": prompt,
             "stream": False,
             "options": {"temperature": 0.2},
-            "format": "json",
         }
         if json_mode:
             payload["format"] = "json"

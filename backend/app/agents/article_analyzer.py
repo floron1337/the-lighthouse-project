@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from inspect import signature
 
 from pydantic import ValidationError
 
@@ -39,6 +40,13 @@ _KEY_ALIASES: dict[str, str] = {
     "Overall Bias Direction": "overall_bias_direction",
     "bias_direction": "overall_bias_direction",
 }
+
+
+async def _complete_json(llm_service: LLMService, prompt: str) -> str:
+    if "json_mode" in signature(llm_service.complete).parameters:
+        return await llm_service.complete(prompt, json_mode=True)
+    return await llm_service.complete(prompt)
+
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
@@ -189,7 +197,7 @@ async def analyze(
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            raw = await llm_service.complete(prompt, json_mode=True)
+            raw = await _complete_json(llm_service, prompt)
             if not raw or not raw.strip():
                 logger.warning("Empty LLM response for article %s — using mock fallback", article.url)
                 return _mock_analysis(article, source_profile)
