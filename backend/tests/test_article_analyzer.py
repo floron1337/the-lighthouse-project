@@ -119,6 +119,66 @@ async def test_analyze_retries_malformed_json_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_compass_reflects_article_bias_evidence() -> None:
+    llm = FakeLLMService(
+        [
+            json.dumps(
+                {
+                    "overall_bias_direction": "pro-government",
+                    "confidence": 0.74,
+                    "framing_analysis": "Frames the border incident as a security threat requiring military deterrence.",
+                    "loaded_terms": ["security threat", "deterrence"],
+                    "omissions": ["Civilian harm and humanitarian context"],
+                    "sentiment_score": -0.6,
+                    "attribution_balance": "Quotes government and military officials.",
+                    "political_compass": {
+                        "economic_axis": 0.0,
+                        "social_axis": 0.0,
+                        "regional_context": "Compared with Western European public media.",
+                        "label": "centrist / institutional",
+                        "confidence": 0.6,
+                    },
+                }
+            )
+        ]
+    )
+
+    analysis = await analyze(ARTICLE, SOURCE_PROFILE, llm)
+
+    assert analysis.political_compass is not None
+    assert analysis.political_compass.social_axis < -0.2
+    assert analysis.political_compass.label == "centrist / authoritarian/conservative"
+    assert "loaded terms" in analysis.political_compass.regional_context
+    assert "attribution" in analysis.political_compass.regional_context
+
+
+@pytest.mark.asyncio
+async def test_compass_uses_bias_evidence_when_model_omits_compass() -> None:
+    llm = FakeLLMService(
+        [
+            json.dumps(
+                {
+                    "overall_bias_direction": "pro-Western",
+                    "confidence": 0.8,
+                    "framing_analysis": "Frames the policy around market investment, transparency, and rights.",
+                    "loaded_terms": ["market", "rights", "transparency"],
+                    "omissions": [],
+                    "sentiment_score": 0.45,
+                    "attribution_balance": "Quotes civilian groups, rights organizations, and opposition lawmakers.",
+                }
+            )
+        ]
+    )
+
+    analysis = await analyze(ARTICLE, SOURCE_PROFILE, llm)
+
+    assert analysis.political_compass is not None
+    assert analysis.political_compass.economic_axis > SOURCE_PROFILE["compass_baseline"]["economic_axis"]
+    assert analysis.political_compass.social_axis > SOURCE_PROFILE["compass_baseline"]["social_axis"]
+    assert analysis.political_compass.label == "centrist / libertarian/progressive"
+
+
+@pytest.mark.asyncio
 async def test_mock_analysis_is_deterministic() -> None:
     class MockLLMService:
         use_mock = True

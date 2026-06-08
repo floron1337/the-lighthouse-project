@@ -59,11 +59,15 @@ async def test_romanian_query_searches_romanian_results_and_keeps_real_articles(
     async def fake_expand(query: str, llm_service: MockLLMService) -> list[str]:
         return [query]
 
-    async def fake_newsapi(query: str, language: str | None = "en") -> list[Article]:
+    async def fake_newsapi(
+        query: str,
+        language: str | None = "en",
+        **_: object,
+    ) -> list[Article]:
         calls.append(("newsapi", language))
         return []
 
-    async def fake_gnews(query: str, language: str = "en") -> list[Article]:
+    async def fake_gnews(query: str, language: str = "en", **_: object) -> list[Article]:
         calls.append(("gnews", language))
         return [_real_article()] if language == "ro" else []
 
@@ -93,10 +97,14 @@ async def test_crawler_uses_mock_articles_only_when_no_real_results(
     async def fake_expand(query: str, llm_service: MockLLMService) -> list[str]:
         return [query]
 
-    async def fake_newsapi(query: str, language: str | None = "en") -> list[Article]:
+    async def fake_newsapi(
+        query: str,
+        language: str | None = "en",
+        **_: object,
+    ) -> list[Article]:
         return []
 
-    async def fake_gnews(query: str, language: str = "en") -> list[Article]:
+    async def fake_gnews(query: str, language: str = "en", **_: object) -> list[Article]:
         return []
 
     async def fake_extract_and_dedupe(articles: list[Article]) -> list[Article]:
@@ -121,10 +129,14 @@ async def test_crawler_does_not_fabricate_articles_in_real_mode(
     async def fake_expand(query: str, llm_service: RealLLMService) -> list[str]:
         return [query]
 
-    async def fake_newsapi(query: str, language: str | None = "en") -> list[Article]:
+    async def fake_newsapi(
+        query: str,
+        language: str | None = "en",
+        **_: object,
+    ) -> list[Article]:
         return []
 
-    async def fake_gnews(query: str, language: str = "en") -> list[Article]:
+    async def fake_gnews(query: str, language: str = "en", **_: object) -> list[Article]:
         return []
 
     async def fake_extract_and_dedupe(articles: list[Article]) -> list[Article]:

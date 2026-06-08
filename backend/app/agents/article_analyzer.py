@@ -24,6 +24,79 @@ _BLOC_TO_DIRECTION: dict[str, str] = {
 
 _MAX_RETRIES = 3
 
+_DIRECTION_COMPASS_NUDGES: dict[str, tuple[float, float]] = {
+    # These are geopolitical-framing hints, not a party-politics mapping.
+    "pro-western": (0.10, 0.04),
+    "pro-brics": (-0.10, -0.10),
+    "pro-government": (-0.03, -0.16),
+    "neutral": (0.0, 0.0),
+    "mixed": (0.0, 0.0),
+}
+
+_ECONOMIC_RIGHT_TERMS = {
+    "business",
+    "capital",
+    "competition",
+    "deregulation",
+    "enterprise",
+    "growth",
+    "investment",
+    "investor",
+    "market",
+    "private",
+    "privatization",
+    "profit",
+    "trade",
+}
+
+_ECONOMIC_LEFT_TERMS = {
+    "austerity",
+    "inequality",
+    "labor",
+    "nationalization",
+    "public",
+    "redistribution",
+    "regulation",
+    "social",
+    "state",
+    "subsidy",
+    "union",
+    "welfare",
+    "worker",
+}
+
+_SOCIAL_AUTHORITARIAN_TERMS = {
+    "accusation",
+    "alarmism",
+    "border",
+    "crackdown",
+    "deterrence",
+    "extremist",
+    "military",
+    "order",
+    "riot",
+    "security",
+    "sovereignty",
+    "stability",
+    "terror",
+    "threat",
+}
+
+_SOCIAL_LIBERTARIAN_TERMS = {
+    "accountability",
+    "activist",
+    "civilian",
+    "democracy",
+    "dissent",
+    "freedom",
+    "humanitarian",
+    "minority",
+    "protest",
+    "refugee",
+    "rights",
+    "transparency",
+}
+
 # All key variants the model might emit → canonical field name
 _KEY_ALIASES: dict[str, str] = {
     "framing": "framing_analysis",
@@ -57,6 +130,82 @@ def _fallback_direction(source_profile: dict) -> str:
     return _BLOC_TO_DIRECTION.get(alliance, "neutral")
 
 
+def _compass_label(economic_axis: float, social_axis: float) -> str:
+    economic = (
+        "left/statist"
+        if economic_axis < -0.2
+        else "market/liberal"
+        if economic_axis > 0.2
+        else "centrist"
+    )
+    social = (
+        "libertarian/progressive"
+        if social_axis > 0.2
+        else "authoritarian/conservative"
+        if social_axis < -0.2
+        else "institutional"
+    )
+    return f"{economic} / {social}"
+
+
+def _contains_any(text: str, terms: set[str]) -> bool:
+    text = text.lower()
+    return any(term in text for term in terms)
+
+
+def _keyword_nudge(text: str, positive_terms: set[str], negative_terms: set[str]) -> float:
+    nudge = 0.0
+    if _contains_any(text, positive_terms):
+        nudge += 0.08
+    if _contains_any(text, negative_terms):
+        nudge -= 0.08
+    return nudge
+
+
+def _direction_nudge(direction: str) -> tuple[float, float]:
+    return _DIRECTION_COMPASS_NUDGES.get(direction.lower(), (0.0, 0.0))
+
+
+def _article_compass_nudges(data: dict) -> tuple[float, float]:
+    evidence_text = " ".join(
+        [
+            str(data.get("framing_analysis", "")),
+            " ".join(str(term) for term in data.get("loaded_terms", []) if term),
+            " ".join(str(omission) for omission in data.get("omissions", []) if omission),
+        ]
+    )
+    attribution = str(data.get("attribution_balance", "")).lower()
+
+    economic = _keyword_nudge(evidence_text, _ECONOMIC_RIGHT_TERMS, _ECONOMIC_LEFT_TERMS)
+    social = _keyword_nudge(
+        evidence_text,
+        _SOCIAL_LIBERTARIAN_TERMS,
+        _SOCIAL_AUTHORITARIAN_TERMS,
+    )
+
+    if any(
+        marker in attribution
+        for marker in ("official", "government", "military", "police")
+    ):
+        social -= 0.05
+    if any(
+        marker in attribution
+        for marker in ("civilian", "rights", "ngo", "activist", "opposition")
+    ):
+        social += 0.05
+
+    sentiment = _clamp(float(data.get("sentiment_score", 0.0)), -1.0, 1.0)
+    if sentiment < -0.35 and _contains_any(evidence_text, _SOCIAL_AUTHORITARIAN_TERMS):
+        social -= 0.04
+    elif sentiment > 0.35 and _contains_any(evidence_text, _SOCIAL_LIBERTARIAN_TERMS):
+        social += 0.04
+
+    direction_economic, direction_social = _direction_nudge(
+        str(data.get("overall_bias_direction", ""))
+    )
+    return economic + direction_economic, social + direction_social
+
+
 def _default_compass(source_profile: dict) -> PoliticalCompassPoint:
     baseline = source_profile.get("compass_baseline") or {}
     return PoliticalCompassPoint(
@@ -85,13 +234,31 @@ def _normalise_compass(data: dict, source_profile: dict) -> dict:
     economic_axis = compass.get("economic_axis", compass.get("economic", compass.get("x")))
     social_axis = compass.get("social_axis", compass.get("social", compass.get("y")))
     confidence = compass.get("confidence", fallback.confidence)
+    economic_nudge, social_nudge = _article_compass_nudges(data)
+    adjusted_economic = (
+        float(economic_axis if economic_axis is not None else fallback.economic_axis)
+        + economic_nudge
+    )
+    adjusted_social = (
+        float(social_axis if social_axis is not None else fallback.social_axis)
+        + social_nudge
+    )
+    adjusted_confidence = _clamp(float(confidence), 0.0, 1.0)
+    if data.get("framing_analysis") or data.get("loaded_terms") or data.get("omissions"):
+        adjusted_confidence = _clamp(adjusted_confidence + 0.05, 0.0, 1.0)
+    regional_context = str(compass.get("regional_context") or fallback.regional_context)
+    if "article framing" not in regional_context.lower():
+        regional_context = (
+            f"{regional_context} Compass placement is adjusted using article framing, "
+            "loaded terms, omissions, attribution, sentiment, and bias direction."
+        )
 
     return {
-        "economic_axis": _clamp(float(economic_axis if economic_axis is not None else fallback.economic_axis), -1.0, 1.0),
-        "social_axis": _clamp(float(social_axis if social_axis is not None else fallback.social_axis), -1.0, 1.0),
-        "regional_context": str(compass.get("regional_context") or fallback.regional_context),
-        "label": str(compass.get("label") or fallback.label),
-        "confidence": _clamp(float(confidence), 0.0, 1.0),
+        "economic_axis": round(_clamp(adjusted_economic, -1.0, 1.0), 2),
+        "social_axis": round(_clamp(adjusted_social, -1.0, 1.0), 2),
+        "regional_context": regional_context,
+        "label": _compass_label(adjusted_economic, adjusted_social),
+        "confidence": adjusted_confidence,
     }
 
 
