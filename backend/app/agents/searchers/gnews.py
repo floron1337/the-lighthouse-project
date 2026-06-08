@@ -7,8 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.agents.searchers._source_map import country_for_name
-from app.agents.source_registry import load_registry
+from app.agents.source_registry import resolve_source_name
 from app.models.article import Article
 
 logger = logging.getLogger(__name__)
@@ -23,21 +22,6 @@ def _sanitize_query(query: str) -> str:
     safe = re.sub(r"\s+[-–—]+\s+", " ", safe)
     safe = re.sub(r"\s+", " ", safe).strip()
     return safe[:200]
-
-
-def _resolve_source(name: str, registry: list[dict]) -> tuple[str, str]:
-    """Map a source name to (source_id, country) from the registry.
-
-    Falls back to a slug + "XX" when no match is found.
-    """
-    name_lower = name.lower()
-    for entry in registry:
-        if entry["name"].lower() == name_lower:
-            return entry["id"], entry["country"]
-        if entry["name"].lower() in name_lower or name_lower in entry["name"].lower():
-            return entry["id"], entry["country"]
-    slug = name_lower.replace(" ", "_").replace(".", "")
-    return slug, country_for_name(name) or "XX"
 
 
 async def search_gnews(
@@ -70,7 +54,6 @@ async def search_gnews(
         logger.info("Skipping GNews query during rate-limit cooldown: %s", query)
         return []
 
-    registry = load_registry()
     safe_query = _sanitize_query(query)
     if not safe_query:
         return []
@@ -103,7 +86,7 @@ async def search_gnews(
     articles: list[Article] = []
     for item in data.get("articles", []):
         source_name = (item.get("source") or {}).get("name", "Unknown")
-        source_id, country = _resolve_source(source_name, registry)
+        source_id, country = resolve_source_name(source_name)
 
         try:
             published_at = datetime.fromisoformat(
