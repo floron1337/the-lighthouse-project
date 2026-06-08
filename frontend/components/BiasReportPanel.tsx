@@ -2,6 +2,7 @@
 
 import {
   CheckCircle2,
+  Compass,
   GitCompareArrows,
   Globe2,
   ScrollText,
@@ -31,6 +32,7 @@ import { Article, BiasReport } from "@/lib/streamClient";
 import { cn, countryFlag } from "@/lib/utils";
 import { SentimentChart } from "@/components/SentimentChart";
 import { BiasSpectrum } from "@/components/BiasSpectrum";
+import { PoliticalCompass } from "@/components/PoliticalCompass";
 
 interface BiasReportPanelProps {
   report: BiasReport;
@@ -117,6 +119,22 @@ export default function BiasReportPanel({
               />
               <div className="mt-4">
                 <BiasSpectrum
+                  analyses={report.per_article}
+                  articleBySource={articleBySource}
+                />
+              </div>
+            </section>
+
+            <Separator />
+
+            <section>
+              <SectionHeader
+                icon={<Compass className="h-4 w-4" />}
+                label="Political Compass"
+                hint="Economic ↔ social placement per source"
+              />
+              <div className="mt-4">
+                <PoliticalCompass
                   analyses={report.per_article}
                   articleBySource={articleBySource}
                 />

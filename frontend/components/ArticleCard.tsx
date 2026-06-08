@@ -9,6 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { MiniCompass } from "@/components/MiniCompass";
 import { cn, countryFlag } from "@/lib/utils";
 
 interface ArticleCardProps {
@@ -33,6 +34,15 @@ function biasVariant(direction?: string): BiasVariant {
   if (d.includes("government") || d.includes("state")) return "government";
   return "mixed";
 }
+
+const VARIANT_DOT: Record<BiasVariant, string> = {
+  west: "bg-bias-west",
+  brics: "bg-bias-brics",
+  neutral: "bg-bias-neutral",
+  government: "bg-bias-government",
+  mixed: "bg-bias-mixed",
+  outline: "bg-muted-foreground",
+};
 
 function sentimentMeta(score: number) {
   if (score > 0.25)
@@ -115,6 +125,12 @@ export default function ArticleCard({ article, analysis }: ArticleCardProps) {
               <Badge variant={variant === "outline" ? "outline" : variant}>
                 {analysis.overall_bias_direction}
               </Badge>
+              {analysis.political_compass && (
+                <MiniCompass
+                  compass={analysis.political_compass}
+                  dotClassName={VARIANT_DOT[variant]}
+                />
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-default">
