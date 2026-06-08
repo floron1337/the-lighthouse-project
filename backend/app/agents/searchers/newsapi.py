@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from app.agents.searchers._source_map import country_for_name
 from app.agents.source_registry import load_registry
 from app.models.article import Article
 
@@ -29,7 +30,8 @@ def _resolve_source(name: str, country: str, registry: list[dict]) -> tuple[str,
         if entry["name"].lower() in name_lower or name_lower in entry["name"].lower():
             return entry["id"], entry["country"]
     slug = name_lower.replace(" ", "_").replace(".", "")
-    return slug, country or "XX"
+    resolved_country = country or country_for_name(name) or "XX"
+    return slug, resolved_country
 
 
 async def search_newsapi(
