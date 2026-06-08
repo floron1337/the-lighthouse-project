@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 import json
 import logging
 import re
+from inspect import signature
 
 from app.agents.prompts import BIAS_COMPARISON_PROMPT
 from app.models.article import Article
@@ -60,6 +61,12 @@ _STOPWORDS = {
     "will",
     "with",
 }
+
+
+async def _complete_json(llm_service: LLMService, prompt: str) -> str:
+    if "json_mode" in signature(llm_service.complete).parameters:
+        return await llm_service.complete(prompt, json_mode=True)
+    return await llm_service.complete(prompt)
 
 
 def _tokens(text: str) -> set[str]:
@@ -377,9 +384,9 @@ async def compare(
     )
 
     try:
-        raw = await llm_service.complete(prompt)
+        raw = await _complete_json(llm_service, prompt)
     except Exception as exc:
-        logger.error("Comparator LLM unavailable: %s — using computed fallback", exc)
+        logger.error("Comparator LLM unavailable: %s: %r — using computed fallback", type(exc).__name__, exc)
         return computed
 
     try:
@@ -396,5 +403,5 @@ async def compare(
             methodology_note=_METHODOLOGY_NOTE,
         )
     except (json.JSONDecodeError, KeyError) as exc:
-        logger.error("Comparator LLM parse error: %s — using computed fallback", exc)
+        logger.error("Comparator LLM parse error: %s: %r — using computed fallback", type(exc).__name__, exc)
         return computed

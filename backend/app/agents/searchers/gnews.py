@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -13,6 +13,15 @@ from app.models.article import Article
 logger = logging.getLogger(__name__)
 
 _GNEWS_BASE = "https://gnews.io/api/v4/search"
+_RATE_LIMITED_UNTIL: datetime | None = None
+_RATE_LIMIT_COOLDOWN_SECONDS = 60
+
+
+def _sanitize_query(query: str) -> str:
+    safe = re.sub(r"[\"'`]", "", query)
+    safe = re.sub(r"\s+[-–—]+\s+", " ", safe)
+    safe = re.sub(r"\s+", " ", safe).strip()
+    return safe[:200]
 
 
 def _resolve_source(name: str, registry: list[dict]) -> tuple[str, str]:
@@ -54,11 +63,19 @@ async def search_gnews(
     if not key:
         return []
 
+    global _RATE_LIMITED_UNTIL
+    now = datetime.now(timezone.utc)
+    if _RATE_LIMITED_UNTIL and now < _RATE_LIMITED_UNTIL:
+        logger.info("Skipping GNews query during rate-limit cooldown: %s", query)
+        return []
+
     registry = load_registry()
-    safe_query = re.sub(r"[\"'`]", "", query).strip()
+    safe_query = _sanitize_query(query)
+    if not safe_query:
+        return []
 
     params = {
-        "q": query,
+        "q": safe_query,
         "lang": language,
         "max": 10,
         "token": key,
@@ -68,7 +85,10 @@ async def search_gnews(
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(_GNEWS_BASE, params=params)
             if resp.status_code == 429:
-                logger.warning("GNews rate limit hit for query: %s", query)
+                _RATE_LIMITED_UNTIL = datetime.now(timezone.utc) + timedelta(
+                    seconds=_RATE_LIMIT_COOLDOWN_SECONDS
+                )
+                logger.warning("GNews rate limit hit for query: %s", safe_query)
                 return []
             if resp.status_code == 400:
                 logger.warning("GNews rejected query (400): %s", safe_query)

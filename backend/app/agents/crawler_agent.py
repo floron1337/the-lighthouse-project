@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 import logging
 
@@ -54,6 +55,8 @@ _ROMANIAN_MARKERS = {
     "ucrainean",
     "un",
 }
+_MAX_SUB_QUERIES = 3
+_MAX_ARTICLES = 12
 
 
 def _looks_romanian(query: str) -> bool:
@@ -89,26 +92,7 @@ class NewsCrawlerAgent:
 
         Returns an ArticleBundle with deduplicated articles from multiple sources.
         """
-        sub_queries = await expand(query, self.llm_service)
-        languages = _search_languages(query)
-
-        tasks = []
-        for q in sub_queries:
-            newsapi_language = None if "ro" in languages else "en"
-            tasks.append(search_newsapi(q, language=newsapi_language))
-            tasks.extend(search_gnews(q, language=language) for language in languages)
-        results = await asyncio.gather(*tasks)
-        raw_articles: list[Article] = [a for batch in results for a in batch]
-
-        # Keep any real results. Only use demo fallback in mock mode.
-        if not raw_articles:
-            if self.llm_service.use_mock:
-                logger.warning("No real articles found for query %r; using mock fallback articles.", query)
-                raw_articles = self._mock_articles(query)
-            else:
-                logger.warning("No real articles found for query %r.", query)
-
-        articles = await extract_and_dedupe(raw_articles)
+        articles = [article async for article in self.iter_articles(query)]
 
         return ArticleBundle(
             query=query,
@@ -117,6 +101,59 @@ class NewsCrawlerAgent:
             countries_covered=list({a.country for a in articles}),
             crawl_timestamp=datetime.now(timezone.utc),
         )
+
+    async def iter_articles(self, query: str) -> AsyncGenerator[Article, None]:
+        """Yield deduplicated articles as each search batch becomes available."""
+        sub_queries = await expand(query, self.llm_service)
+        sub_queries = sub_queries[:_MAX_SUB_QUERIES]
+        languages = _search_languages(query)
+
+        seen_urls: set[str] = set()
+        seen_titles: set[str] = set()
+        yielded = 0
+
+        async def emit_batch(raw_articles: list[Article]) -> AsyncGenerator[Article, None]:
+            nonlocal yielded
+            for article in await extract_and_dedupe(raw_articles):
+                title_key = article.title.strip().casefold()
+                if article.url in seen_urls or title_key in seen_titles:
+                    continue
+                seen_urls.add(article.url)
+                seen_titles.add(title_key)
+                yielded += 1
+                yield article
+                if yielded >= _MAX_ARTICLES:
+                    return
+
+        for q in sub_queries:
+            newsapi_language = None if "ro" in languages else "en"
+            async for article in emit_batch(await search_newsapi(q, language=newsapi_language)):
+                yield article
+            if yielded >= _MAX_ARTICLES:
+                return
+
+            gnews_results = await asyncio.gather(
+                *(search_gnews(q, language=language) for language in languages),
+                return_exceptions=True,
+            )
+            for result in gnews_results:
+                if isinstance(result, Exception):
+                    logger.warning("GNews search task failed for query %r: %s: %r", q, type(result).__name__, result)
+                    continue
+                async for article in emit_batch(result):
+                    yield article
+                if yielded >= _MAX_ARTICLES:
+                    return
+
+        if yielded:
+            return
+
+        if self.llm_service.use_mock:
+            logger.warning("No real articles found for query %r; using mock fallback articles.", query)
+            for article in self._mock_articles(query):
+                yield article
+        else:
+            logger.warning("No real articles found for query %r.", query)
 
     def _mock_articles(self, query: str) -> list[Article]:
         now = datetime.now(timezone.utc)
