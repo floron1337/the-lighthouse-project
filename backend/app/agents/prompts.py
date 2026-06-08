@@ -69,6 +69,10 @@ You are comparing {n_sources} news articles covering the same topic: "{topic}"
 Per-source summaries:
 {articles_summary}
 
+Only use claims supported by the supplied headlines/framing summaries. Do not
+treat the topic phrase itself as a consensus fact. If a source summary appears
+off-topic, ignore it when deriving consensus facts and the balanced summary.
+
 Identify and return ONLY JSON (no markdown fences) with these keys:
 - consensus_facts: list[str] — facts reported by 3+ sources
 - disputed_framings: list[dict] — each has "framing", "sources_using_it" (list), "geopolitical_pattern"

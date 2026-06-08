@@ -91,6 +91,14 @@ def _source_name(source_id: str, articles_by_source: dict[str, Article]) -> str:
     return article.source_name if article else source_id
 
 
+def _article_for_analysis(
+    analysis: ArticleBiasAnalysis,
+    articles_by_url: dict[str, Article],
+    articles_by_source: dict[str, Article],
+) -> Article | None:
+    return articles_by_url.get(analysis.article_url) or articles_by_source.get(analysis.source_id)
+
+
 def _profile_label(source_ids: list[str], source_profiles_by_id: dict[str, dict]) -> str:
     blocs = Counter(
         source_profiles_by_id.get(source_id, {}).get("alliance_bloc", "unknown")
@@ -307,6 +315,41 @@ def _balanced_summary(
     ).strip()
 
 
+def _is_useful_fact(fact: object, topic: str) -> bool:
+    if not isinstance(fact, str):
+        return False
+    text = re.sub(r"\s+", " ", fact).strip()
+    if len(text) < 35:
+        return False
+    if text.casefold().rstrip(".") == topic.casefold().strip().rstrip("."):
+        return False
+    return len(_tokens(text)) >= 5
+
+
+def _valid_llm_framings(framings: object) -> list[dict]:
+    if not isinstance(framings, list):
+        return []
+    valid: list[dict] = []
+    for framing in framings:
+        if not isinstance(framing, dict):
+            continue
+        text = framing.get("framing")
+        sources = framing.get("sources_using_it")
+        pattern = framing.get("geopolitical_pattern")
+        if not isinstance(text, str) or len(text.strip()) < 30:
+            continue
+        if not isinstance(sources, list) or not sources:
+            continue
+        valid.append(
+            {
+                "framing": text.strip(),
+                "sources_using_it": [str(source) for source in sources],
+                "geopolitical_pattern": str(pattern or "Not specified"),
+            }
+        )
+    return valid
+
+
 def _computed_report(
     analyses: list[ArticleBiasAnalysis],
     topic: str,
@@ -315,6 +358,7 @@ def _computed_report(
 ) -> BiasReport:
     articles = articles or []
     articles_by_source = {article.source_id: article for article in articles}
+    articles_by_url = {article.url: article for article in articles}
     source_profiles_by_id = {
         profile.get("source_id", profile.get("id", "")): profile
         for profile in (source_profiles or [])
@@ -370,12 +414,23 @@ async def compare(
     if llm_service is None or llm_service.use_mock:
         return computed
 
-    articles_summary = "\n".join(
-        f"- [{a.source_id}] Direction: {a.overall_bias_direction} | "
-        f"Framing: {a.framing_analysis[:200]} | "
-        f"Loaded terms: {', '.join(a.loaded_terms[:5])}"
-        for a in analyses
-    )
+    articles = articles or []
+    articles_by_source = {article.source_id: article for article in articles}
+    articles_by_url = {article.url: article for article in articles}
+
+    articles_summary_lines: list[str] = []
+    for analysis in analyses:
+        article = _article_for_analysis(analysis, articles_by_url, articles_by_source)
+        source_name = article.source_name if article else analysis.source_id
+        title = article.title if article else "Unknown headline"
+        articles_summary_lines.append(
+            f"- Source: {source_name} [{analysis.source_id}] | "
+            f"Headline: {title[:180]} | "
+            f"Direction: {analysis.overall_bias_direction} | "
+            f"Framing: {analysis.framing_analysis[:260]} | "
+            f"Loaded terms: {', '.join(analysis.loaded_terms[:5]) or 'none'}"
+        )
+    articles_summary = "\n".join(articles_summary_lines)
 
     prompt = BIAS_COMPARISON_PROMPT.format(
         n_sources=len(analyses),
@@ -393,13 +448,30 @@ async def compare(
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data: dict = json.loads(cleaned)
 
+        llm_facts = [
+            str(fact).strip()
+            for fact in data.get("consensus_facts", [])
+            if _is_useful_fact(fact, topic)
+        ]
+        llm_framings = _valid_llm_framings(data.get("disputed_framings"))
+        llm_patterns = [
+            str(pattern).strip()
+            for pattern in data.get("geopolitical_patterns", [])
+            if isinstance(pattern, str) and len(pattern.strip()) >= 35
+        ]
+        llm_summary = data.get("balanced_summary")
+
         return BiasReport(
             topic=topic or "Unknown topic",
-            consensus_facts=data.get("consensus_facts") or computed.consensus_facts,
-            disputed_framings=data.get("disputed_framings") or computed.disputed_framings,
+            consensus_facts=llm_facts or computed.consensus_facts,
+            disputed_framings=llm_framings or computed.disputed_framings,
             per_article=analyses,
-            geopolitical_patterns=data.get("geopolitical_patterns") or computed.geopolitical_patterns,
-            balanced_summary=data.get("balanced_summary") or computed.balanced_summary,
+            geopolitical_patterns=llm_patterns or computed.geopolitical_patterns,
+            balanced_summary=(
+                llm_summary.strip()
+                if isinstance(llm_summary, str) and len(llm_summary.strip()) >= 20
+                else computed.balanced_summary
+            ),
             methodology_note=_METHODOLOGY_NOTE,
         )
     except (json.JSONDecodeError, KeyError) as exc:

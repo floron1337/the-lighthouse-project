@@ -7,31 +7,12 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.agents.searchers._source_map import country_for_name
-from app.agents.source_registry import load_registry
+from app.agents.source_registry import resolve_source_name
 from app.models.article import Article
 
 logger = logging.getLogger(__name__)
 
 _NEWSAPI_BASE = "https://newsapi.org/v2/everything"
-
-
-def _resolve_source(name: str, country: str, registry: list[dict]) -> tuple[str, str]:
-    """Map a source name/country pair to (source_id, country) from the registry.
-
-    Falls back to a slugified name and the provided country code when no match
-    is found.
-    """
-    name_lower = name.lower()
-    for entry in registry:
-        if entry["name"].lower() == name_lower:
-            return entry["id"], entry["country"]
-        # partial match: registry name contained in API name or vice versa
-        if entry["name"].lower() in name_lower or name_lower in entry["name"].lower():
-            return entry["id"], entry["country"]
-    slug = name_lower.replace(" ", "_").replace(".", "")
-    resolved_country = country or country_for_name(name) or "XX"
-    return slug, resolved_country
 
 
 async def search_newsapi(
@@ -59,7 +40,6 @@ async def search_newsapi(
     if not key:
         return []
 
-    registry = load_registry()
     safe_query = re.sub(r"[\"'`]", "", query).strip()
     from_date = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
@@ -88,7 +68,7 @@ async def search_newsapi(
     articles: list[Article] = []
     for item in data.get("articles", []):
         source_name = (item.get("source") or {}).get("name", "Unknown")
-        source_id, country = _resolve_source(source_name, "", registry)
+        source_id, country = resolve_source_name(source_name)
 
         try:
             published_at = datetime.fromisoformat(
