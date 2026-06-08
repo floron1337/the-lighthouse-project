@@ -76,13 +76,13 @@ The UI starts at **http://localhost:3000**.
 
 ## Environment Variables
 
-| Variable | Used in | Required for mock mode? |
+| Variable | Used in | Required? |
 |---|---|---|
-| `LLM_MOCK` | `backend/app/services/llm_service.py` | Set to `true` |
-| `OLLAMA_URL` | `backend/app/services/llm_service.py` | No |
-| `OLLAMA_MODEL` | `backend/app/services/llm_service.py` | No |
-| `NEWSAPI_KEY` | `backend/app/agents/searchers/newsapi.py` | No |
-| `GNEWS_KEY` | `backend/app/agents/searchers/gnews.py` | No |
+| `LLM_MOCK` | `backend/app/services/llm_service.py` | No — set `true` to skip Ollama calls (default: `false`) |
+| `OLLAMA_URL` | `backend/app/services/llm_service.py` | No (defaults to `http://localhost:11434`) |
+| `OLLAMA_MODEL` | `backend/app/services/llm_service.py` | No (defaults to `llama3.2`) |
+| `NEWSAPI_KEY` | `backend/app/agents/searchers/newsapi.py` | No — omit to use mock article fallback |
+| `GNEWS_KEY` | `backend/app/agents/searchers/gnews.py` | No — omit to use mock article fallback |
 | `NEXT_PUBLIC_BACKEND_URL` | `frontend/lib/streamClient.ts` | No (defaults to `http://localhost:8000`) |
 
 With `LLM_MOCK=true`, the app is functional with synthetic LLM output and
@@ -104,43 +104,134 @@ pytest tests/ -v
 
 Expected output: 4 passing tests in `tests/test_orchestrator_mock.py`.
 
+
 ---
 
-## Pick Up a Ticket
+## AI Tools Usage Report
 
-> Each section names the exact file to open and what the teammate needs to implement.
+This section documents every point at which artificial intelligence is used inside the application — what model runs, what it receives, what it produces, and what safeguards are in place.
 
-### THE-6 — Source Registry (expand to ~100 sources)
-**File:** [`backend/app/source_registry.json`](backend/app/source_registry.json)
+---
 
-The registry has 20 seed sources. Expand it to ~100 by adding underrepresented regions: Sub-Saharan Africa (e.g. Mail & Guardian, Daily Nation), Latin America (e.g. Folha de S.Paulo, Infobae), Central Asia, and more ASEAN outlets. Each entry needs: `id`, `name`, `country`, `region`, `ownership`, `known_lean`, `alliance_bloc`, `rss_url`, `language`, `credibility_score`. Add RSS URL validation logic in [`backend/app/agents/source_registry.py`](backend/app/agents/source_registry.py).
+### Local LLM Infrastructure
 
-### THE-7 — Query Expander
+The application runs **no cloud AI APIs in production**. All language-model inference is served by a local [Ollama](https://ollama.com) daemon (`localhost:11434`). The default model is **llama3.2** (2 GB, Meta Llama 3.2 3B), configured via `OLLAMA_MODEL`. Any Ollama-compatible model can be substituted.
+
+The shared abstraction is [`backend/app/services/llm_service.py`](backend/app/services/llm_service.py):
+
+```
+LLMService.complete(prompt, json_mode=False)
+    │
+    ├─ use_mock=True  →  returns a canned string (dev / CI)
+    └─ use_mock=False →  POST http://localhost:11434/api/generate
+                            model:   OLLAMA_MODEL
+                            stream:  false
+                            format:  "json"  (when json_mode=True)
+                            options: temperature=0.2
+```
+
+Setting `json_mode=True` passes Ollama's grammar-constrained JSON mode, which forces the tokenizer to only emit tokens that keep the output as valid JSON. This is used for the two structured-output calls (bias analysis and comparison) but **not** for query expansion, which expects a JSON array that the constraint would prevent.
+
+---
+
+### Agent 1 — News Crawler Agent
+
+**File:** [`backend/app/agents/crawler_agent.py`](backend/app/agents/crawler_agent.py)
+
+The crawler has one AI-powered step:
+
+#### Step 1.1 — Query Expansion (THE-7)
+
 **File:** [`backend/app/agents/query_expander.py`](backend/app/agents/query_expander.py)
 
-Replace the mock in `expand()` with a real LLM call. Use `llm_service.complete()` with the prompt template in [`backend/app/agents/prompts.py`](backend/app/agents/prompts.py) (`QUERY_EXPANSION_PROMPT`). Parse the returned JSON array and return it as `list[str]`. Add error handling for malformed LLM output (retry once, then fall back to the mock).
+| | |
+|---|---|
+| **When** | Once per user request, before any API calls |
+| **Input** | Raw user query string (e.g. `"South China Sea tensions"`) |
+| **Prompt** | `QUERY_EXPANSION_PROMPT` in [`backend/app/agents/prompts.py`](backend/app/agents/prompts.py) |
+| **Output** | JSON array of 3 sub-query strings covering: exact topic, geopolitical angle, temporal variant |
+| **Fallback** | `[query, "{query} 2026", "{query} international"]` on any LLM or parse failure |
 
-### THE-8 — News API Searchers
-**Files:** [`backend/app/agents/searchers/newsapi.py`](backend/app/agents/searchers/newsapi.py), [`backend/app/agents/searchers/gnews.py`](backend/app/agents/searchers/gnews.py)
+The expanded sub-queries are each sent to both NewsAPI and GNews in parallel, broadening geographic and framing coverage before any bias analysis begins.
 
-Replace the mock returns with real `httpx.AsyncClient` calls. For NewsAPI, hit `/v2/everything` with `q`, `from` (7 days ago), `language=en`, and `apiKey` params. For GNews, hit `/v4/search`. Map JSON responses to `Article` models — resolve `source_id` from the registry by fuzzy-matching `source.name`. Read keys from `os.environ["NEWSAPI_KEY"]` and `os.environ["GNEWS_KEY"]`. Handle 429 rate-limiting gracefully (return empty list, log warning).
+---
 
-### THE-9 — Article Extractor & Deduplicator
-**File:** [`backend/app/agents/extractor.py`](backend/app/agents/extractor.py)
+### Agent 2 — Bias Analyst Agent
 
-Implement `extract_and_dedupe()`. First uncomment `trafilatura` and/or `newspaper3k` in [`backend/pyproject.toml`](backend/pyproject.toml). For each article whose `full_text` is a stub or snippet, fetch the URL and extract clean body text with trafilatura. Then deduplicate: compute TF-IDF vectors (or OpenAI `text-embedding-3-small`) for all articles, drop pairs with cosine similarity > 0.85 (keep the higher-credibility source).
+**File:** [`backend/app/agents/bias_agent.py`](backend/app/agents/bias_agent.py)
 
-### THE-10 — Source Profiler
-**File:** [`backend/app/agents/source_profiler.py`](backend/app/agents/source_profiler.py)
+The analyst has two AI-powered steps:
 
-Enrich `get_source_profile()` with RSF press-freedom index data (rsf.org/en/index) keyed by ISO country code — store as a local JSON file to avoid live API calls. Optionally query the LLM for a one-sentence editorial-history summary of the outlet. The richer profile is passed to `article_analyzer.py` as the `source_profile` dict.
+#### Step 2.1 — Per-Article Bias Analysis (THE-11)
 
-### THE-11 — Article Analyzer
 **File:** [`backend/app/agents/article_analyzer.py`](backend/app/agents/article_analyzer.py)
 
-Replace the mock in `analyze()` with a structured LLM call. Inject article text and source profile into `prompts.BIAS_ANALYSIS_PROMPT`, call `llm_service.complete()`, parse the JSON response into an `ArticleBiasAnalysis`. Add one retry on `json.JSONDecodeError`. Validate that `sentiment_score` is in `[-1, 1]` and `confidence` is in `[0, 1]`.
+| | |
+|---|---|
+| **When** | Once per article, all articles analyzed in parallel (`asyncio.gather`) |
+| **Input** | Article title + first 2 000 chars of body text; source metadata (outlet, country, ownership, editorial lean, alliance bloc) |
+| **Prompt** | `BIAS_ANALYSIS_PROMPT` in [`prompts.py`](backend/app/agents/prompts.py) |
+| **Output** | `ArticleBiasAnalysis` JSON object with 7 fields (see model below) |
+| **JSON mode** | Yes — `json_mode=True` forces valid JSON object output |
+| **Retries** | Up to 3 attempts on parse/validation error; mock fallback on final failure |
+| **Fallback** | Mock analysis derived from source registry metadata (no crash) |
 
-### THE-14 — Comparator
+Output fields (`ArticleBiasAnalysis`):
+
+| Field | Type | Description |
+|---|---|---|
+| `overall_bias_direction` | `str` | One of: `pro-Western`, `pro-BRICS`, `pro-government`, `neutral`, `mixed` |
+| `confidence` | `float 0–1` | Model's self-reported confidence in the classification |
+| `framing_analysis` | `str` | How the headline and lede frame the story |
+| `sentiment_score` | `float −1–+1` | Emotional valence of the article text |
+| `loaded_terms` | `list[str]` | Politically charged or emotionally loaded words found in the text |
+| `omissions` | `list[str]` | Context typically covered by other sources but absent here |
+| `attribution_balance` | `str` | Who is quoted and whether representation is balanced |
+
+#### Step 2.2 — Cross-Source Comparison (THE-14)
+
 **File:** [`backend/app/agents/comparator.py`](backend/app/agents/comparator.py)
 
-Replace the mock in `compare()` with real comparison logic. Group analyses by `alliance_bloc`, find facts mentioned in 3+ articles (string overlap or embedding similarity), cluster disputed framings, and call the LLM with `prompts.BIAS_COMPARISON_PROMPT` to generate `balanced_summary`. Return a fully populated `BiasReport`. All existing tests in `tests/test_orchestrator_mock.py` must still pass.
+| | |
+|---|---|
+| **When** | Once per request, after all per-article analyses complete |
+| **Input** | All `ArticleBiasAnalysis` results, summarised as one line per article (source, bias direction, framing snippet, loaded terms) |
+| **Prompt** | `BIAS_COMPARISON_PROMPT` in [`prompts.py`](backend/app/agents/prompts.py) |
+| **Output** | 4 fields of `BiasReport`: `consensus_facts`, `disputed_framings`, `geopolitical_patterns`, `balanced_summary` |
+| **JSON mode** | Yes — `json_mode=True` |
+| **Fallback** | Mock report with alliance-bloc groupings derived from per-article results (no crash) |
+
+---
+
+### Prompt Design
+
+All prompts are in [`backend/app/agents/prompts.py`](backend/app/agents/prompts.py). Design choices:
+
+- **Temperature 0.2** across all calls — low enough for consistent structured output, high enough to avoid degenerately repetitive phrasing.
+- **Explicit JSON schema in the prompt** — the bias analysis prompt includes the exact key names and types so the model does not need to infer schema from context.
+- **No chain-of-thought** — the prompts ask directly for the output JSON. For a 3B model, COT would consume context without improving classification accuracy on this task.
+- **2 000-character article truncation** — llama3.2's context window is 128 k tokens, but longer inputs slow inference significantly; 2 000 chars (≈ 400 tokens) captures the lede, key claims, and framing, which is where bias most clearly manifests.
+
+---
+
+### Failure Modes & Safeguards
+
+| Failure | Handling |
+|---|---|
+| Ollama not running / unreachable | `httpx.ConnectError` caught in `query_expander`; orchestrator catches all crawler exceptions and yields `{"type": "error", ...}` to the frontend |
+| LLM returns empty string | Detected before JSON parse; immediately uses mock fallback (no wasted retries) |
+| LLM returns nested/malformed JSON | `_parse_response` in `article_analyzer.py` flattens `analysis` wrappers, normalises capitalised key variants, and provides string/list defaults before Pydantic validation |
+| LLM returns invalid JSON despite `json_mode` | Up to 3 retries; mock fallback on final failure |
+| News API rate-limit (429) or bad query (400) | Searchers return `[]`; crawler falls back to 5 mock articles if fewer than 3 unique source IDs are found |
+| Article URL fetch fails during text extraction | Per-URL `try/except` in `extractor.py`; article keeps its truncated text |
+
+---
+
+### Mock Mode
+
+Setting `LLM_MOCK=true` (or not setting it in `.env`) bypasses all Ollama calls. Every agent step returns deterministic synthetic data. This is the default for:
+
+- Local development without Ollama installed
+- CI (GitHub Actions `frontend-tests.yml`)
+- The 4 backend unit tests in `tests/test_orchestrator_mock.py`
+
