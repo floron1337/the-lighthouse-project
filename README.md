@@ -21,12 +21,21 @@ Every user query triggers Agent 1 → Agent 2 → streamed UI updates. See [`DES
 | `uv` | any | preferred; falls back to `pip` |
 | Node.js | 18+ | |
 | `pnpm` | any | preferred; falls back to `npm` |
+| Ollama | any | optional; only needed when `LLM_MOCK=false` |
 
 ### 1. Clone and configure
 
 ```bash
 cp .env.example .env
-# Edit .env — API keys are optional in mock mode (the default)
+# Edit .env — mock mode is enabled by default
+```
+
+To run real local LLM analysis instead of mock responses, install Ollama,
+pull the configured model, and set `LLM_MOCK=false`:
+
+```bash
+ollama pull llama3.2
+ollama serve
 ```
 
 ### 2. Backend
@@ -76,7 +85,9 @@ The UI starts at **http://localhost:3000**.
 | `GNEWS_KEY` | `backend/app/agents/searchers/gnews.py` | No — omit to use mock article fallback |
 | `NEXT_PUBLIC_BACKEND_URL` | `frontend/lib/streamClient.ts` | No (defaults to `http://localhost:8000`) |
 
-All keys default to mock mode when not set — the app is fully functional with synthetic data out of the box.
+With `LLM_MOCK=true`, the app is functional with synthetic LLM output and
+does not require Ollama. With `LLM_MOCK=false`, `LLMService` sends prompts to
+Ollama's `/api/generate` endpoint using `OLLAMA_MODEL`.
 
 ---
 

@@ -48,6 +48,12 @@ export default function HomePage() {
       for await (const event of streamSearch(q)) {
         if (event.type === "article") {
           setArticles((prev) => [...prev, event.data]);
+        } else if (event.type === "article_analysis") {
+          setAnalyses((prev) => {
+            const next = new Map(prev);
+            next.set(event.data.article_url, event.data);
+            return next;
+          });
         } else if (event.type === "bias_report") {
           setBiasReport(event.data);
           const map = new Map<string, ArticleBiasAnalysis>();

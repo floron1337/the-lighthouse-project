@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -13,6 +13,15 @@ from app.models.article import Article
 logger = logging.getLogger(__name__)
 
 _GNEWS_BASE = "https://gnews.io/api/v4/search"
+_RATE_LIMITED_UNTIL: datetime | None = None
+_RATE_LIMIT_COOLDOWN_SECONDS = 60
+
+
+def _sanitize_query(query: str) -> str:
+    safe = re.sub(r"[\"'`]", "", query)
+    safe = re.sub(r"\s+[-–—]+\s+", " ", safe)
+    safe = re.sub(r"\s+", " ", safe).strip()
+    return safe[:200]
 
 
 def _resolve_source(name: str, registry: list[dict]) -> tuple[str, str]:
@@ -30,16 +39,21 @@ def _resolve_source(name: str, registry: list[dict]) -> tuple[str, str]:
     return slug, "XX"
 
 
-async def search_gnews(query: str, api_key: str = "") -> list[Article]:
+async def search_gnews(
+    query: str,
+    api_key: str = "",
+    language: str = "en",
+) -> list[Article]:
     """Search the GNews API /v4/search for articles matching query.
 
-    Queries for English-language results, maps results to Article, and
+    Queries for results in the requested language, maps results to Article, and
     falls back gracefully if the API key is missing or quota is exhausted.
     Requires GNEWS_KEY environment variable to be set.
 
     Args:
         query: Search string (one of the sub-queries from query_expander).
         api_key: GNews key; reads from GNEWS_KEY env var if empty.
+        language: ISO language code supported by GNews.
 
     Returns:
         List of Article objects. Returns an empty list on quota exhaustion or
@@ -49,12 +63,20 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
     if not key:
         return []
 
+    global _RATE_LIMITED_UNTIL
+    now = datetime.now(timezone.utc)
+    if _RATE_LIMITED_UNTIL and now < _RATE_LIMITED_UNTIL:
+        logger.info("Skipping GNews query during rate-limit cooldown: %s", query)
+        return []
+
     registry = load_registry()
-    safe_query = re.sub(r"[\"'`]", "", query).strip()
+    safe_query = _sanitize_query(query)
+    if not safe_query:
+        return []
 
     params = {
         "q": safe_query,
-        "lang": "en",
+        "lang": language,
         "max": 10,
         "token": key,
     }
@@ -63,7 +85,10 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(_GNEWS_BASE, params=params)
             if resp.status_code == 429:
-                logger.warning("GNews rate limit hit for query: %s", query)
+                _RATE_LIMITED_UNTIL = datetime.now(timezone.utc) + timedelta(
+                    seconds=_RATE_LIMIT_COOLDOWN_SECONDS
+                )
+                logger.warning("GNews rate limit hit for query: %s", safe_query)
                 return []
             if resp.status_code == 400:
                 logger.warning("GNews rejected query (400): %s", safe_query)
@@ -95,7 +120,7 @@ async def search_gnews(query: str, api_key: str = "") -> list[Article]:
                 source_name=source_name,
                 country=country,
                 published_at=published_at,
-                language="en",
+                language=language,
             )
         )
 

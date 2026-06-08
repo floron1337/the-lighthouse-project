@@ -32,17 +32,22 @@ def _resolve_source(name: str, country: str, registry: list[dict]) -> tuple[str,
     return slug, country or "XX"
 
 
-async def search_newsapi(query: str, api_key: str = "") -> list[Article]:
+async def search_newsapi(
+    query: str,
+    api_key: str = "",
+    language: str | None = "en",
+) -> list[Article]:
     """Search NewsAPI.org /v2/everything for articles matching query.
 
     Hits the endpoint with the given query string, filters to the past 7 days,
-    requests English-language results, and maps each result to an Article.
+    applies a language filter when provided, and maps each result to an Article.
     Source ids are resolved against the source registry where possible.
     Requires NEWSAPI_KEY environment variable to be set.
 
     Args:
         query: Search string (one of the sub-queries from query_expander).
         api_key: NewsAPI key; reads from NEWSAPI_KEY env var if empty.
+        language: ISO language code, or None to search without a language filter.
 
     Returns:
         List of Article objects. Returns an empty list on quota exhaustion or
@@ -59,11 +64,12 @@ async def search_newsapi(query: str, api_key: str = "") -> list[Article]:
     params = {
         "q": safe_query,
         "from": from_date,
-        "language": "en",
         "sortBy": "publishedAt",
         "pageSize": 20,
         "apiKey": key,
     }
+    if language:
+        params["language"] = language
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -98,7 +104,7 @@ async def search_newsapi(query: str, api_key: str = "") -> list[Article]:
                 source_name=source_name,
                 country=country,
                 published_at=published_at,
-                language="en",
+                language=language or "und",
             )
         )
 

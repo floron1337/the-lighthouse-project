@@ -3,6 +3,14 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class PoliticalCompassPoint(BaseModel):
+    economic_axis: float            # -1 (left/statist) to +1 (market/liberal)
+    social_axis: float              # -1 (authoritarian) to +1 (libertarian)
+    regional_context: str           # why the score is interpreted this way regionally
+    label: str                      # short human-readable quadrant/position label
+    confidence: float               # 0-1 confidence in the compass placement
+
+
 class ArticleBiasAnalysis(BaseModel):
     article_url: str
     source_id: str
@@ -13,6 +21,7 @@ class ArticleBiasAnalysis(BaseModel):
     omissions: list[str]             # topics covered by others but missing here
     sentiment_score: float           # -1 (very negative) to +1 (very positive)
     attribution_balance: str         # who is quoted and how balanced
+    political_compass: PoliticalCompassPoint | None = None
 
 
 class BiasReport(BaseModel):

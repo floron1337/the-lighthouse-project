@@ -5,6 +5,12 @@ import pytest
 from app.agents.orchestrator import process_query
 
 
+@pytest.fixture(autouse=True)
+def force_mock_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep orchestrator tests offline even when Ollama is not running."""
+    monkeypatch.setenv("LLM_MOCK", "true")
+
+
 @pytest.mark.asyncio
 async def test_process_query_yields_articles_then_report() -> None:
     """process_query must yield ≥1 article events then exactly one bias_report."""

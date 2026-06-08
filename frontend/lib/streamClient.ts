@@ -13,6 +13,14 @@ export interface Article {
   translated_text: string | null;
 }
 
+export interface PoliticalCompassPoint {
+  economic_axis: number;
+  social_axis: number;
+  regional_context: string;
+  label: string;
+  confidence: number;
+}
+
 export interface ArticleBiasAnalysis {
   article_url: string;
   source_id: string;
@@ -23,6 +31,7 @@ export interface ArticleBiasAnalysis {
   omissions: string[];
   sentiment_score: number;
   attribution_balance: string;
+  political_compass?: PoliticalCompassPoint | null;
 }
 
 export interface DisputedFraming {
@@ -43,6 +52,7 @@ export interface BiasReport {
 
 export type SearchEvent =
   | { type: "article"; data: Article }
+  | { type: "article_analysis"; data: ArticleBiasAnalysis }
   | { type: "bias_report"; data: BiasReport };
 
 const BACKEND_URL =
@@ -51,8 +61,8 @@ const BACKEND_URL =
 /**
  * Streams SSE events from POST /api/search.
  *
- * Yields SearchEvent objects as they arrive — first article events, then a
- * single bias_report event. The caller receives events one by one via
+ * Yields SearchEvent objects as they arrive: article events, progressive
+ * article_analysis events, then a single bias_report event. The caller receives events one by one via
  * `for await (const event of streamSearch(query)) { ... }`.
  *
  * Throws if the backend is unreachable or returns a non-2xx status.
