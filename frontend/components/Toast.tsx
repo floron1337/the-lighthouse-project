@@ -110,12 +110,12 @@ export function Toast({
           />
         )}
       </div>
-      <style jsx>{`
-        @keyframes lighthouse-toast-bar {
-          from { transform: scaleX(1); }
-          to { transform: scaleX(0); }
-        }
-      `}</style>
+      <style
+        dangerouslySetInnerHTML={{
+          __html:
+            "@keyframes lighthouse-toast-bar{from{transform:scaleX(1)}to{transform:scaleX(0)}}",
+        }}
+      />
     </div>
   );
 }

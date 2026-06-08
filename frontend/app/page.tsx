@@ -8,6 +8,7 @@ import BiasReportPanel from "@/components/BiasReportPanel";
 import SearchBar from "@/components/SearchBar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toast } from "@/components/Toast";
+import { LegendDialog } from "@/components/LegendDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { countryFlag } from "@/lib/utils";
 import {
@@ -228,6 +229,7 @@ export default function HomePage() {
                       Streaming…
                     </span>
                   )}
+                  <LegendDialog />
                 </div>
               </header>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
