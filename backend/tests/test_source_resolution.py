@@ -14,7 +14,7 @@ def test_resolve_source_name_does_not_match_short_name_inside_unrelated_source()
     source_id, country = resolve_source_name("Fortune", registry=REGISTRY)
 
     assert source_id == "fortune"
-    assert country == "XX"
+    assert country == "US"
 
 
 def test_resolve_source_name_uses_aliases_for_common_api_variants() -> None:
@@ -22,3 +22,10 @@ def test_resolve_source_name_uses_aliases_for_common_api_variants() -> None:
 
     assert source_id == "dw"
     assert country == "DE"
+
+
+def test_resolve_source_name_prefers_explicit_fallback_country() -> None:
+    source_id, country = resolve_source_name("Unknown Local Outlet", country="RO", registry=REGISTRY)
+
+    assert source_id == "unknown_local_outlet"
+    assert country == "RO"

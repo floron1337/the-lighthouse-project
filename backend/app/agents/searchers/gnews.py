@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.agents.searchers._source_map import country_for_name
 from app.agents.source_registry import resolve_source_name
 from app.models.article import Article
 

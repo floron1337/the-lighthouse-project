@@ -5,6 +5,8 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from app.agents.searchers._source_map import country_for_name
+
 
 @lru_cache(maxsize=1)
 def load_registry() -> list[dict]:
@@ -98,4 +100,5 @@ def resolve_source_name(
     if best_entry is not None:
         return str(best_entry["id"]), str(best_entry["country"])
 
-    return _slugify_source_name(raw_name), country or "XX"
+    resolved_country = country or country_for_name(raw_name) or "XX"
+    return _slugify_source_name(raw_name), resolved_country
