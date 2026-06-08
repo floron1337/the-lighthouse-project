@@ -30,9 +30,11 @@ import {
 } from "@/components/ui/tooltip";
 import { Article, BiasReport } from "@/lib/streamClient";
 import { cn, countryFlag } from "@/lib/utils";
+import * as React from "react";
 import { SentimentChart } from "@/components/SentimentChart";
 import { BiasSpectrum } from "@/components/BiasSpectrum";
 import { PoliticalCompass } from "@/components/PoliticalCompass";
+import { RegionSelector } from "@/components/RegionSelector";
 
 interface BiasReportPanelProps {
   report: BiasReport;
@@ -56,6 +58,13 @@ export default function BiasReportPanel({
   const visibleConsensusFacts = report.consensus_facts.filter(
     (f) => (f ?? "").trim().length > 0
   );
+
+  const anchors = report.regional_anchors ?? [];
+  const [selectedAnchorId, setSelectedAnchorId] = React.useState<string>(
+    "global"
+  );
+  const viewAnchor =
+    anchors.find((a) => a.id === selectedAnchorId) ?? null;
 
   return (
     <Card className="overflow-hidden border-accent/30">
@@ -155,10 +164,20 @@ export default function BiasReportPanel({
                 label="Political Compass"
                 hint="Economic ↔ social placement per source"
               />
+              {anchors.length > 0 && (
+                <div className="mt-3">
+                  <RegionSelector
+                    anchors={anchors}
+                    selectedId={selectedAnchorId}
+                    onChange={setSelectedAnchorId}
+                  />
+                </div>
+              )}
               <div className="mt-4">
                 <PoliticalCompass
                   analyses={report.per_article}
                   articleBySource={articleBySource}
+                  viewAnchor={viewAnchor}
                 />
               </div>
             </section>

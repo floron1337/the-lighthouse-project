@@ -24,6 +24,24 @@ class ArticleBiasAnalysis(BaseModel):
     political_compass: PoliticalCompassPoint | None = None
 
 
+class RegionalAnchor(BaseModel):
+    """A median-citizen reference point on the political-compass plane.
+
+    Used by the frontend to re-anchor the compass view: when the user picks a
+    region, every source dot is plotted relative to that region's anchor, so
+    e.g. "centre-right by US standards" can appear differently from "centre-
+    right by EU standards" without re-running any analysis.
+    """
+
+    id: str                          # short stable key (e.g. "us", "eu")
+    name: str                        # full label (e.g. "United States median")
+    short_name: str                  # compact label for UI chips
+    flag: str                        # emoji or symbol for the region
+    economic_axis: float             # -1 .. +1
+    social_axis: float               # -1 .. +1
+    description: str                 # one-line rationale shown in tooltips
+
+
 class BiasReport(BaseModel):
     topic: str
     consensus_facts: list[str]               # agreed upon by most sources
@@ -32,3 +50,4 @@ class BiasReport(BaseModel):
     geopolitical_patterns: list[str]         # high-level cross-source observations
     balanced_summary: str                    # LLM-generated neutral summary
     methodology_note: str                    # transparency about analysis approach
+    regional_anchors: list[RegionalAnchor] = []  # available "viewed from" perspectives
