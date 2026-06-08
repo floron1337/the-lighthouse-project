@@ -202,7 +202,7 @@ async def analyze(
                 logger.warning("Empty LLM response for article %s — using mock fallback", article.url)
                 return _mock_analysis(article, source_profile)
             return _parse_response(raw, article, source_profile)
-        except (json.JSONDecodeError, ValidationError, KeyError, ValueError) as exc:
+        except (json.JSONDecodeError, ValidationError, KeyError, OSError, ValueError) as exc:
             logger.warning("Article analysis parse error (attempt %d/%d): %s", attempt, _MAX_RETRIES, exc)
 
     logger.error("All retries exhausted for article %s — using mock fallback", article.url)
