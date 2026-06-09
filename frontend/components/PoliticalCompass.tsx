@@ -6,12 +6,21 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Article, ArticleBiasAnalysis } from "@/lib/streamClient";
+import {
+  Article,
+  ArticleBiasAnalysis,
+  RegionalAnchor,
+} from "@/lib/streamClient";
 import { cn, countryFlag } from "@/lib/utils";
 
 interface PoliticalCompassProps {
   analyses: ArticleBiasAnalysis[];
   articleBySource: Map<string, Article>;
+  /** When provided, every source is replotted relative to this anchor — the
+   * anchor sits at the centre of the chart and source coordinates become
+   * (source − anchor). Lets the user view the same compass through a
+   * "median citizen of region X" lens. */
+  viewAnchor?: RegionalAnchor | null;
 }
 
 function dotColor(direction: string): string {
@@ -33,7 +42,12 @@ function toPercent(value: number): number {
 export function PoliticalCompass({
   analyses,
   articleBySource,
+  viewAnchor = null,
 }: PoliticalCompassProps) {
+  const anchorEcon = viewAnchor?.economic_axis ?? 0;
+  const anchorSocial = viewAnchor?.social_axis ?? 0;
+  const isAnchored = Boolean(viewAnchor && viewAnchor.id !== "global");
+
   const points = React.useMemo(
     () =>
       analyses
@@ -45,15 +59,19 @@ export function PoliticalCompass({
             id: a.article_url,
             sourceName: article?.source_name ?? a.source_id,
             country: article?.country ?? "",
+            // absolute coordinates, as returned by the LLM
             economic: compass.economic_axis,
             social: compass.social_axis,
+            // viewed coordinates — what the user sees on screen
+            viewedEconomic: compass.economic_axis - anchorEcon,
+            viewedSocial: compass.social_axis - anchorSocial,
             label: compass.label,
             regional: compass.regional_context,
             confidence: compass.confidence,
             direction: a.overall_bias_direction,
           };
         }),
-    [analyses, articleBySource]
+    [analyses, articleBySource, anchorEcon, anchorSocial]
   );
 
   if (points.length === 0) {
@@ -109,11 +127,31 @@ export function PoliticalCompass({
           Right
         </span>
 
-        {/* dots */}
+        {/* anchor marker — only shown when a non-global view is active */}
+        {isAnchored && viewAnchor && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full border-2 border-dashed border-accent bg-background text-[10px] cursor-default"
+                aria-label={`Anchor: ${viewAnchor.name}`}
+              >
+                {viewAnchor.flag}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[240px]">
+              <div className="font-semibold">{viewAnchor.name}</div>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                {viewAnchor.description}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {/* dots — positioned in the viewed (anchor-adjusted) frame */}
         {points.map((p) => {
-          const x = toPercent(p.economic);
-          // social axis: +1 (libertarian) should sit at bottom, -1 (auth) at top
-          const y = 100 - toPercent(p.social);
+          const x = toPercent(p.viewedEconomic);
+          // social axis: -1 (authoritarian) → top of chart, +1 (libertarian) → bottom
+          const y = toPercent(p.viewedSocial);
           return (
             <Tooltip key={p.id}>
               <TooltipTrigger asChild>
@@ -142,6 +180,15 @@ export function PoliticalCompass({
                     {p.economic.toFixed(2)} · social {p.social > 0 ? "+" : ""}
                     {p.social.toFixed(2)}
                   </div>
+                  {isAnchored && viewAnchor && (
+                    <div className="text-xs text-accent">
+                      Through {viewAnchor.short_name}: econ{" "}
+                      {p.viewedEconomic > 0 ? "+" : ""}
+                      {p.viewedEconomic.toFixed(2)} · social{" "}
+                      {p.viewedSocial > 0 ? "+" : ""}
+                      {p.viewedSocial.toFixed(2)}
+                    </div>
+                  )}
                   {p.regional && (
                     <p className="text-xs leading-snug text-foreground/80">
                       {p.regional}
@@ -155,37 +202,53 @@ export function PoliticalCompass({
       </div>
 
       <aside className="space-y-2 text-xs md:max-w-[220px]">
-        <p className="text-muted-foreground leading-relaxed">
-          Each dot is one source, placed by the analyzer along an{" "}
-          <span className="text-foreground font-medium">economic</span> (left ↔
-          right) and{" "}
-          <span className="text-foreground font-medium">social</span>{" "}
-          (authoritarian ↔ libertarian) axis. Hover a dot for the regional
-          rationale.
-        </p>
+        {isAnchored && viewAnchor ? (
+          <p className="text-muted-foreground leading-relaxed">
+            Viewed from the{" "}
+            <span className="text-foreground font-medium">
+              {viewAnchor.name}
+            </span>
+            . The centre marks where this region's median sits; dots show how
+            each source falls{" "}
+            <em className="text-foreground/90">relative to that baseline</em>.
+          </p>
+        ) : (
+          <p className="text-muted-foreground leading-relaxed">
+            Each dot is one source, placed by the analyzer along an{" "}
+            <span className="text-foreground font-medium">economic</span> (left ↔
+            right) and{" "}
+            <span className="text-foreground font-medium">social</span>{" "}
+            (authoritarian ↔ libertarian) axis. Pick a region above to
+            re-anchor the view.
+          </p>
+        )}
         <ul className="space-y-1 pt-2">
-          {points.map((p) => (
-            <li
-              key={`${p.id}-legend`}
-              className="flex items-center gap-2 truncate"
-            >
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full shrink-0",
-                  dotColor(p.direction)
-                )}
-              />
-              <span className="truncate text-foreground/90">
-                {p.sourceName}
-              </span>
-              <span className="text-muted-foreground ml-auto shrink-0 tabular-nums">
-                {p.economic > 0 ? "+" : ""}
-                {p.economic.toFixed(1)},{" "}
-                {p.social > 0 ? "+" : ""}
-                {p.social.toFixed(1)}
-              </span>
-            </li>
-          ))}
+          {points.map((p) => {
+            const econ = isAnchored ? p.viewedEconomic : p.economic;
+            const social = isAnchored ? p.viewedSocial : p.social;
+            return (
+              <li
+                key={`${p.id}-legend`}
+                className="flex items-center gap-2 truncate"
+              >
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full shrink-0",
+                    dotColor(p.direction)
+                  )}
+                />
+                <span className="truncate text-foreground/90">
+                  {p.sourceName}
+                </span>
+                <span className="text-muted-foreground ml-auto shrink-0 tabular-nums">
+                  {econ > 0 ? "+" : ""}
+                  {econ.toFixed(1)},{" "}
+                  {social > 0 ? "+" : ""}
+                  {social.toFixed(1)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </aside>
     </div>

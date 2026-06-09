@@ -40,6 +40,16 @@ export interface DisputedFraming {
   geopolitical_pattern: string;
 }
 
+export interface RegionalAnchor {
+  id: string;
+  name: string;
+  short_name: string;
+  flag: string;
+  economic_axis: number;
+  social_axis: number;
+  description: string;
+}
+
 export interface BiasReport {
   topic: string;
   consensus_facts: string[];
@@ -48,6 +58,7 @@ export interface BiasReport {
   geopolitical_patterns: string[];
   balanced_summary: string;
   methodology_note: string;
+  regional_anchors?: RegionalAnchor[];
 }
 
 export type SearchEvent =

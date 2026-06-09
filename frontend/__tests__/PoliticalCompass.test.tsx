@@ -84,9 +84,9 @@ describe("PoliticalCompass", () => {
     );
 
     const dot = screen.getByRole("button", { name: /reuters/i });
-    // economic +0.4 -> 70%, social -0.6 -> 80% (because auth=top)
+    // economic +0.4 -> 70%, social -0.6 -> 20% (auth is at the TOP of the chart)
     expect(dot.getAttribute("style")).toContain("left: 70%");
-    expect(dot.getAttribute("style")).toContain("top: 80%");
+    expect(dot.getAttribute("style")).toContain("top: 20%");
   });
 
   it("lists the source in the side legend", () => {
@@ -98,6 +98,59 @@ describe("PoliticalCompass", () => {
     );
     expect(screen.getAllByText(/reuters/i).length).toBeGreaterThan(0);
     expect(screen.getByText("+0.4, -0.6")).toBeInTheDocument();
+  });
+
+  it("re-positions dots relative to the provided viewAnchor", () => {
+    const usAnchor = {
+      id: "us",
+      name: "United States median",
+      short_name: "US",
+      flag: "🇺🇸",
+      economic_axis: 0.25,
+      social_axis: -0.1,
+      description: "Market-leaning",
+    };
+    renderWith(
+      <PoliticalCompass
+        analyses={analyses}
+        articleBySource={new Map([[reuters.url, reuters]])}
+        viewAnchor={usAnchor}
+      />
+    );
+
+    // econ +0.4 − 0.25 = +0.15 → 57.5%
+    // social -0.6 − (-0.1) = -0.5 → 25% (auth-side, top of chart)
+    const dot = screen.getByRole("button", { name: /reuters/i });
+    expect(dot.getAttribute("style")).toContain("left: 57.49999999999999%");
+    expect(dot.getAttribute("style")).toContain("top: 25%");
+    // anchor marker is rendered too
+    expect(
+      screen.getByLabelText(/anchor: united states median/i)
+    ).toBeInTheDocument();
+  });
+
+  it("does not transform when the anchor is the global baseline", () => {
+    const globalAnchor = {
+      id: "global",
+      name: "Global median",
+      short_name: "Global",
+      flag: "🌐",
+      economic_axis: 0,
+      social_axis: 0,
+      description: "Baseline",
+    };
+    renderWith(
+      <PoliticalCompass
+        analyses={analyses}
+        articleBySource={new Map([[reuters.url, reuters]])}
+        viewAnchor={globalAnchor}
+      />
+    );
+    const dot = screen.getByRole("button", { name: /reuters/i });
+    expect(dot.getAttribute("style")).toContain("left: 70%");
+    expect(dot.getAttribute("style")).toContain("top: 20%");
+    // no anchor marker when global
+    expect(screen.queryByLabelText(/anchor: /i)).not.toBeInTheDocument();
   });
 });
 
@@ -117,8 +170,8 @@ describe("MiniCompass", () => {
     );
     const grid = screen.getByLabelText(/political compass/i);
     const dot = grid.querySelector("span:last-child") as HTMLElement;
-    // economic clamped to +1 → 100%, social clamped to -1 → 100% (top)
+    // economic clamped to +1 → 100%, social clamped to -1 → 0% (top = auth)
     expect(dot.style.left).toBe("100%");
-    expect(dot.style.top).toBe("100%");
+    expect(dot.style.top).toBe("0%");
   });
 });

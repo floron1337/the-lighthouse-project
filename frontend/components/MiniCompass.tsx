@@ -26,7 +26,8 @@ export function MiniCompass({
   size = 32,
 }: MiniCompassProps) {
   const x = toPercent(compass.economic_axis);
-  const y = 100 - toPercent(compass.social_axis);
+  // social axis: -1 (authoritarian) → top, +1 (libertarian) → bottom
+  const y = toPercent(compass.social_axis);
 
   return (
     <Tooltip>

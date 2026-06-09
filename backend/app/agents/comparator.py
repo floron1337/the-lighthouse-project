@@ -5,13 +5,34 @@ import json
 import logging
 import re
 from inspect import signature
+from pathlib import Path
 
 from app.agents.prompts import BIAS_COMPARISON_PROMPT
 from app.models.article import Article
-from app.models.bias_report import ArticleBiasAnalysis, BiasReport
+from app.models.bias_report import ArticleBiasAnalysis, BiasReport, RegionalAnchor
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
+
+
+def _load_regional_anchors() -> list[RegionalAnchor]:
+    """Load curated regional-anchor reference points once at import time.
+
+    The frontend uses these to let the user re-anchor the political-compass
+    view (e.g. "show this through a US-median lens"). If the JSON file is
+    missing or malformed we degrade silently to an empty list — the rest of
+    the report is unaffected.
+    """
+    path = Path(__file__).resolve().parent.parent / "regional_anchors.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return [RegionalAnchor(**item) for item in raw]
+    except (FileNotFoundError, json.JSONDecodeError, TypeError) as exc:
+        logger.warning("regional_anchors.json unavailable (%s); compass view will fall back to global only", exc)
+        return []
+
+
+_REGIONAL_ANCHORS = _load_regional_anchors()
 
 _METHODOLOGY_NOTE = (
     "Bias analysis combines deterministic cross-source comparison with LLM-assisted "
@@ -380,6 +401,7 @@ def _computed_report(
             geopolitical_patterns,
         ),
         methodology_note=_METHODOLOGY_NOTE,
+        regional_anchors=_REGIONAL_ANCHORS,
     )
 
 
@@ -473,6 +495,7 @@ async def compare(
                 else computed.balanced_summary
             ),
             methodology_note=_METHODOLOGY_NOTE,
+            regional_anchors=_REGIONAL_ANCHORS,
         )
     except (json.JSONDecodeError, KeyError) as exc:
         logger.error("Comparator LLM parse error: %s: %r — using computed fallback", type(exc).__name__, exc)
