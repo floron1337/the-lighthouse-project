@@ -91,6 +91,25 @@ Ollama's `/api/generate` endpoint using `OLLAMA_MODEL`.
 
 ---
 
+## Docker
+
+```bash
+# Run the full stack with Docker Compose (mock LLM, no Ollama required)
+docker compose up --build
+
+# With real Ollama running on the host
+LLM_MOCK=false docker compose up --build
+```
+
+Production images are automatically built and published to the GitHub Container Registry on every push to `main` by the [CD workflow](.github/workflows/docker-publish.yml):
+
+```bash
+docker pull ghcr.io/floron1337/the-lighthouse-project/backend:latest
+docker pull ghcr.io/floron1337/the-lighthouse-project/frontend:latest
+```
+
+---
+
 ## Running Tests
 
 ```bash
