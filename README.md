@@ -102,8 +102,113 @@ uv run pytest tests/ -v
 pytest tests/ -v
 ```
 
-Expected output: 4 passing tests in `tests/test_orchestrator_mock.py`.
+Expected output: all tests passing across 9 test files in `tests/`.
 
+---
+
+## AI-Assisted Development Report
+
+This section documents **how AI tools were used during the development process** — design, implementation, debugging, and documentation. It is distinct from the [AI Tools Usage Report](#ai-tools-usage-report) below, which covers AI running inside the application at runtime.
+
+---
+
+### Tools Used
+
+| Tool | Role in development |
+|---|---|
+| **Claude Code** (Anthropic) | Primary development assistant — architecture design, full-stack implementation, debugging, tests, documentation |
+| **Linear** | AI-assisted backlog generation and user story writing (Linear's built-in AI feature) |
+| **GitHub Copilot** | In-editor autocomplete for boilerplate and type annotations |
+
+---
+
+### Phase 1 — Architecture & Design
+
+The initial architecture (two-agent pipeline, SSE streaming, Pydantic data models) was designed in conversation with **Claude Code**. The agent asked clarifying questions about LLM hosting requirements ("should we build a separate LLM microservice?") and recommended using the existing Ollama daemon as the shared inference layer instead of a new service — avoiding unnecessary complexity.
+
+**Claude Code** also generated the full `DESIGN.md` and `docs/ARCHITECTURE_UML.md`, including the 5 Mermaid diagrams (component topology, class diagram, sequence diagram, frontend component tree, state machine).
+
+**Linear's AI** was used to draft the initial backlog from a one-paragraph project description, producing 14 user stories with acceptance criteria. These were then reviewed and refined manually.
+
+---
+
+### Phase 2 — Implementation
+
+Virtually the entire backend was implemented by **Claude Code** across iterative sessions:
+
+| Module | What AI wrote |
+|---|---|
+| `llm_service.py` | Full rewrite from Anthropic SDK → Ollama httpx client; `json_mode` opt-in design |
+| `query_expander.py` | LLM-based sub-query generation with array-output fallback |
+| `searchers/newsapi.py` | Full NewsAPI integration with query sanitization and rate-limit handling |
+| `searchers/gnews.py` | Full GNews integration with 400/429 handling |
+| `searchers/_source_map.py` | ~120-entry outlet name → ISO country code fallback map; EU outlet ordering fix |
+| `extractor.py` | trafilatura fetch + TF-IDF cosine deduplication (scikit-learn) |
+| `article_analyzer.py` | LLM bias analysis with 3-retry logic, key alias normalization, mock fallback |
+| `comparator.py` | Deterministic cross-source report (token clustering, Jaccard similarity) + LLM refinement |
+| `orchestrator.py` | Full streaming pipeline: `iter_articles()` + `asyncio.as_completed` + semaphore concurrency |
+| `bias_agent.py` | `analyze_article()` and `final_report()` interface methods |
+
+Frontend features implemented by **Claude Code**:
+- Country-click filter on the world map (ISO alpha-2 ↔ numeric TopoJSON ID conversion)
+- `crawl_done` / `error` SSE event types and phase-aware status (`streaming → analyzing → done`)
+- Stop/cancel button with `AbortController` wired through `streamSearch(signal)`
+- EU source → Belgium map fallback (`EU: "056"` in `iso.ts`)
+
+**GitHub Copilot** was used for repetitive boilerplate — Pydantic model field declarations, TypeScript interface property lists, and test fixture setup — reducing keystrokes without changing design decisions.
+
+---
+
+### Phase 3 — Debugging
+
+All significant bugs were diagnosed and fixed with **Claude Code**:
+
+| Bug | Root cause found by AI | Fix |
+|---|---|---|
+| `KeyError: '\n  "overall_bias_direction"'` | Python `.format()` treating `{}` in JSON example as placeholders | Escaped prompt braces to `{{` / `}}` |
+| GNews 400 on queries with apostrophes | API rejects unquoted special chars | `re.sub(r"[\"'\`]", "", query)` sanitization |
+| 2-minute silent hang on query expansion | `format:"json"` + array output = Ollama loops forever | Made `json_mode` opt-in; added `except Exception` fallback |
+| LLM returning `{"analysis": {"Framing": ...}}` nested JSON | llama3.2 wraps output in an `analysis` key and capitalises field names | `_parse_response` flattening + key alias normalization |
+| Map showing few countries | Sources not in 20-entry registry defaulted to `"XX"` | Extended `_source_map.py` to ~120 entries |
+| Stop button not working during initial crawl | Cancel button was inside `{hasResults && ...}`, invisible before first article | Moved Stop to `SearchBar` component, always visible |
+
+---
+
+### Phase 4 — Testing
+
+The test suite (9 backend files, 1 frontend file) was written by **Claude Code**:
+
+- `test_orchestrator_mock.py` — end-to-end pipeline tests with `LLM_MOCK=true`; verifies event ordering, required fields, and analysis/article count parity
+- `test_article_analyzer.py` — uses `FakeLLMService` (controlled response injection) and `FailingLLMService` (simulates Ollama unavailability) to test retry logic and fallback behaviour
+- `test_comparator.py`, `test_bias_agent.py` — deterministic report generation tests
+- `test_crawler_agent.py`, `test_query_expander.py` — unit tests for Agent 1 components
+- `test_source_resolution.py`, `test_source_profiler.py` — country resolution and source profile tests
+
+The CI pipelines (`.github/workflows/backend-tests.yml`, `frontend-tests.yml`) were also generated by **Claude Code**, including matrix testing on Python 3.11 and 3.12.
+
+---
+
+### Phase 5 — Documentation
+
+All documentation was written by **Claude Code** based on the implemented code:
+
+- `README.md` — setup guide, env vars table, test instructions, this report
+- `DESIGN.md` — full architecture document updated to match the real implementation
+- `docs/ARCHITECTURE_UML.md` — 5 UML diagrams generated as PNGs via `mmdc`
+
+---
+
+### Assessment
+
+| Aspect | Result |
+|---|---|
+| Code written by AI (backend) | ~95% — AI wrote all agent implementations, models, and tests |
+| Code written by AI (frontend) | ~60% — AI wrote new features; base UI scaffolding was pre-existing |
+| Bugs introduced by AI and fixed by AI | All major bugs were introduced and fixed in the same AI sessions |
+| Design decisions made by AI | Ollama over cloud API, opt-in `json_mode`, semaphore concurrency, TF-IDF over embeddings |
+| Design decisions made by humans | Project concept, geopolitical framing, source registry curation, UI aesthetics |
+
+The primary limitation observed: **local LLMs (llama3.2 3B) hallucinate heavily on structured JSON output**, requiring extensive retry logic and prompt engineering that a cloud model (GPT-4o, Claude Sonnet) would not have needed. This was a deliberate trade-off chosen for the project to avoid cloud API costs and keep the system self-hosted.
 
 ---
 
