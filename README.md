@@ -4,6 +4,27 @@
 
 The Lighthouse is a news application powered by two embedded AI agents that form the core data pipeline:
 
+---
+
+## Project Deliverables
+
+Quick index for evaluators — every requirement, one click away.
+
+| Requirement | Where to find it |
+|---|---|
+| **Live demo** | Running app at `localhost:3000` after setup below |
+| **2 AI agents** | [DESIGN.md — Agent 1 & Agent 2](DESIGN.md) · [AI Tools Usage Report](#ai-tools-usage-report) |
+| **User stories & backlog** | [Linear project board](https://linear.app/the-lighthouse-project/project/lighthouse-news-bias-report-d2f5d9dca425/overview) |
+| **Architecture diagrams** | [docs/ARCHITECTURE_UML.md](docs/ARCHITECTURE_UML.md) — 5 diagrams (component, class, sequence, frontend, state machine) |
+| **Source control** | [GitHub — branches & PRs](https://github.com/floron1337/the-lighthouse-project/pulls?q=is%3Apr+is%3Amerged) · 48+ commits · 5 branches · 4 merged PRs |
+| **Automated tests + agent evals** | [`backend/tests/`](backend/tests/) (9 files) · [`frontend/__tests__/`](frontend/__tests__/) · [CI workflow](.github/workflows/backend-tests.yml) |
+| **Bug report + PR** | [THE-25 on Linear](https://linear.app/the-lighthouse-project/issue/THE-25/fix-map-displayed-at-top-of-search-view-after-search) · [PR #2](https://github.com/floron1337/the-lighthouse-project/pull/2) |
+| **CI pipeline** | [backend-tests.yml](.github/workflows/backend-tests.yml) · [frontend-tests.yml](.github/workflows/frontend-tests.yml) |
+| **CD pipeline** | [docker-publish.yml](.github/workflows/docker-publish.yml) — builds & pushes Docker images to GHCR on every push to `main` |
+| **AI dev tools report** | [AI-Assisted Development Report](#ai-assisted-development-report) section below |
+
+---
+
 1. **News Crawler Agent** — given a user query, finds articles from diverse international sources (NewsAPI, GNews, RSS feeds, regional outlets).
 2. **Bias Analyst Agent** — analyzes those articles for geopolitical bias (framing, loaded language, omissions, attribution patterns) and produces a comparative report.
 
@@ -170,8 +191,7 @@ Virtually the entire backend was implemented by **Claude Code** across iterative
 
 Frontend features implemented by **Claude Code**:
 - Country-click filter on the world map (ISO alpha-2 ↔ numeric TopoJSON ID conversion)
-- `crawl_done` / `error` SSE event types and phase-aware status (`streaming → analyzing → done`)
-- Stop/cancel button with `AbortController` wired through `streamSearch(signal)`
+- Progressive `article_analysis` event handling — bias badges appear on article cards as each LLM call completes
 - EU source → Belgium map fallback (`EU: "056"` in `iso.ts`)
 
 **GitHub Copilot** was used for repetitive boilerplate — Pydantic model field declarations, TypeScript interface property lists, and test fixture setup — reducing keystrokes without changing design decisions.
@@ -189,7 +209,6 @@ All significant bugs were diagnosed and fixed with **Claude Code**:
 | 2-minute silent hang on query expansion | `format:"json"` + array output = Ollama loops forever | Made `json_mode` opt-in; added `except Exception` fallback |
 | LLM returning `{"analysis": {"Framing": ...}}` nested JSON | llama3.2 wraps output in an `analysis` key and capitalises field names | `_parse_response` flattening + key alias normalization |
 | Map showing few countries | Sources not in 20-entry registry defaulted to `"XX"` | Extended `_source_map.py` to ~120 entries |
-| Stop button not working during initial crawl | Cancel button was inside `{hasResults && ...}`, invisible before first article | Moved Stop to `SearchBar` component, always visible |
 
 ---
 

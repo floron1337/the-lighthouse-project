@@ -185,8 +185,6 @@ sequenceDiagram
       ORCH-->>SC: SSE: article
       SC-->>UI: render ArticleCard
     end
-    ORCH-->>SC: SSE: crawl_done
-    SC-->>UI: status = analyzing
   end
 
   rect rgb(255,245,235)
@@ -229,7 +227,7 @@ flowchart TB
   Layout --> Page
 
   Page --> Header
-  Page --> Search["SearchBar\nAnalyze / Stop button"]
+  Page --> Search["SearchBar\nAnalyze / Crawling… spinner"]
   Page --> Map["RegionMap\ncountry-click filter"]
   Page --> Cards["ArticleCard x N\nbias badge overlay"]
   Page --> Report["BiasReportPanel"]
@@ -269,16 +267,12 @@ stateDiagram-v2
   [*] --> Idle
   Idle --> Streaming : user submits query
   Streaming --> Streaming : article event
-  Streaming --> Analyzing : crawl_done event
-  Analyzing --> Analyzing : article_analysis event
-  Analyzing --> Done : bias_report received
+  Streaming --> Streaming : article_analysis event
+  Streaming --> Done : bias_report received
   Streaming --> Error : network or backend error
-  Analyzing --> Done : 180s safety-net timeout
   Error --> Streaming : user retries
   Done --> Streaming : new query
   Done --> Idle : page reload
-  Streaming --> Idle : Stop button
-  Analyzing --> Idle : Stop button
 ```
 
 </details>

@@ -30,7 +30,7 @@ The agents are not bolt-on features — they are **core to the app's data flow**
 │                                          │
 │  Yields: Article events (SSE)            │
 └──────────────────┬───────────────────────┘
-                   │ crawl_done event
+                   │ article_analysis events (streamed)
                    ▼
 ┌──────────────────────────────────────────┐
 │       AGENT 2: Bias Analyst              │
@@ -223,7 +223,6 @@ backend/app/
 | Event type | When | Payload |
 |---|---|---|
 | `article` | As each article is crawled | `Article` |
-| `crawl_done` | After all articles fetched | `{ article_count: number }` |
 | `article_analysis` | As each LLM analysis finishes | `ArticleBiasAnalysis` |
 | `bias_report` | After all analyses + comparator | `BiasReport` |
 | `error` | On unhandled failure | `{ message: string }` |
@@ -246,8 +245,6 @@ async def process_query(query: str) -> AsyncGenerator[dict, None]:
         async for event in emit_finished_analyses():   # emit any already-done tasks
             yield event
 
-    yield {"type": "crawl_done", "data": {"article_count": len(articles)}}
-
     # Phase 2: Drain remaining analysis tasks as they complete
     for task in asyncio.as_completed(pending):
         analysis, source_profile = await task
@@ -265,7 +262,7 @@ frontend/
 ├── app/
 │   └── page.tsx                 # Main page: status machine, event handler, layout
 ├── components/
-│   ├── SearchBar.tsx            # Search input + Stop button (replaces Analyze when active)
+│   ├── SearchBar.tsx            # Search input; shows "Crawling…" spinner when active
 │   ├── ArticleCard.tsx          # Article display with bias badge overlay
 │   ├── BiasReportPanel.tsx      # Bias report: consensus facts, disputed framings
 │   └── RegionMap.tsx            # react-simple-maps world map, country-click filter
@@ -277,15 +274,12 @@ frontend/
 **Frontend status machine:**
 
 ```
-idle → streaming (articles arriving)
-     → analyzing (crawl_done received; shows "Analysing X/Y…" progress)
-     → done (bias_report received)
-     → error (error event or fetch exception)
+idle → streaming (articles arrive + analyses badge in progressively)
+     → done (bias_report received / stream ends)
+     → error (network or backend exception)
 
-Any state → idle via Stop button (AbortController cancels the fetch)
+done/error → streaming on new query
 ```
-
-A 180-second safety-net timeout in `"analyzing"` state transitions to `"done"` if the bias report never arrives (e.g. Ollama hangs).
 
 **RegionMap** highlights countries by article count, dims non-selected countries when a filter is active, and toggles country filtering on click. "EU"-coded articles map to Belgium (Brussels) via the `iso.ts` fallback.
 
