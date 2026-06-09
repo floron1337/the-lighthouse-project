@@ -1,75 +1,78 @@
-# Lighthouse — Architecture UML
+# Lighthouse — Architecture Diagrams
 
-This document captures the system architecture of the Lighthouse News Bias
-Report app as a set of UML diagrams. All diagrams use Mermaid so they
-render natively on GitHub and in most Markdown viewers.
+> Backlog: [Lighthouse on Linear](https://linear.app/the-lighthouse-project/project/lighthouse-news-bias-report-d2f5d9dca425/overview)
+> · See also [`../DESIGN.md`](../DESIGN.md)
 
-> Source of truth: [Lighthouse News Bias Report on Linear](https://linear.app/the-lighthouse-project/project/lighthouse-news-bias-report-d2f5d9dca425/overview)
-> · See also [`../DESIGN.md`](../DESIGN.md).
+Diagrams are stored as PNG files in [`diagrams/`](diagrams/) and embedded below. To regenerate after editing a source block, run:
+
+```bash
+npx @mermaid-js/mermaid-cli -i input.mmd -o docs/diagrams/name.png -w 1400 -b white
+```
 
 ---
 
-## 1. Component diagram — system topology
+## 1. System topology — component diagram
 
-The app is a thin browser → Next.js → FastAPI → external-tool stack. The
-two AI agents live inside the FastAPI backend and are chained by the
-orchestrator.
+The app is a browser → Next.js → FastAPI stack. The two AI agents live inside the FastAPI backend and are chained by the orchestrator. All LLM inference runs locally via Ollama.
+
+![Component diagram](diagrams/component.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
-  subgraph Browser["🌐 Browser"]
-    UI["Next.js UI<br/>(SearchBar · ArticleCard · BiasReportPanel · RegionMap)"]
-    SC["streamClient.ts<br/>(SSE reader)"]
+  subgraph Browser
+    UI["Next.js UI\nSearchBar · ArticleCard\nBiasReportPanel · RegionMap"]
+    SC["streamClient.ts\nSSE + AbortController"]
     UI --> SC
   end
 
-  subgraph Backend["🐍 FastAPI Backend"]
-    API["/api/search<br/>SSE endpoint/"]
-    ORCH["Orchestrator<br/>process_query()"]
+  subgraph Backend["FastAPI Backend"]
+    API["/api/search\nSSE endpoint"]
+    ORCH["Orchestrator\nprocess_query()"]
     subgraph A1["Agent 1 — News Crawler"]
-      QE[QueryExpander]
-      SR[SourceRegistry]
-      SEARCH[Searchers<br/>NewsAPI · GNews · RSS]
-      EXT[Extractor + Dedupe]
+      QE["QueryExpander\n(LLM)"]
+      SEARCH["Searchers\nNewsAPI · GNews"]
+      EXT["Extractor + Dedupe\ntrafilatura · TF-IDF"]
     end
     subgraph A2["Agent 2 — Bias Analyst"]
-      SP[SourceProfiler]
-      AA[ArticleAnalyzer]
-      CMP[Comparator]
+      AA["ArticleAnalyzer\n(LLM, json_mode)"]
+      CMP["Comparator\n(LLM + deterministic)"]
     end
-    LLM[(LLM Service<br/>Anthropic / OpenAI)]
-    CACHE[(Cache)]
+    LLM[("Ollama\nllama3.2\nlocalhost:11434")]
   end
 
-  subgraph External["☁️ External"]
-    NAPI[NewsAPI.org]
-    GNEWS[GNews]
-    RSS[RSS Feeds]
-    ATLAS[world-atlas TopoJSON CDN]
+  subgraph External
+    NAPI["NewsAPI.org"]
+    GNEWS["GNews"]
+    ATLAS["world-atlas\nTopoJSON CDN"]
   end
 
   SC -- "POST /api/search" --> API
   API --> ORCH
   ORCH --> A1
   ORCH --> A2
-  A1 --> EXT
   QE --> LLM
   AA --> LLM
   CMP --> LLM
-  SP --> SR
   SEARCH --> NAPI
   SEARCH --> GNEWS
-  SEARCH --> RSS
-  ORCH --> CACHE
-  UI -. "fetches map geometries" .-> ATLAS
+  UI -. "map geometries" .-> ATLAS
 ```
+
+</details>
 
 ---
 
-## 2. Class diagram — domain model
+## 2. Domain model — class diagram
 
-Mirrors the dataclasses defined in `backend/app/models/` and the
-TypeScript interfaces in `frontend/lib/streamClient.ts`.
+Mirrors the Pydantic models in `backend/app/models/` and the TypeScript interfaces in `frontend/lib/streamClient.ts`.
+
+![Class diagram](diagrams/class.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 classDiagram
@@ -104,8 +107,6 @@ classDiagram
     +str ownership
     +str known_lean
     +str alliance_bloc
-    +str rss_url
-    +str language
     +float credibility_score
   }
 
@@ -119,18 +120,13 @@ classDiagram
     +List~str~ omissions
     +float sentiment_score
     +str attribution_balance
-  }
-
-  class DisputedFraming {
-    +str framing
-    +List~str~ sources_using_it
-    +str geopolitical_pattern
+    +PoliticalCompassPoint compass
   }
 
   class BiasReport {
     +str topic
     +List~str~ consensus_facts
-    +List~DisputedFraming~ disputed_framings
+    +List~dict~ disputed_framings
     +List~ArticleBiasAnalysis~ per_article
     +List~str~ geopolitical_patterns
     +str balanced_summary
@@ -140,16 +136,21 @@ classDiagram
   ArticleBundle "1" o-- "*" Article
   Article --> Source : source_id
   BiasReport "1" o-- "*" ArticleBiasAnalysis
-  BiasReport "1" o-- "*" DisputedFraming
   ArticleBiasAnalysis --> Article : article_url
 ```
 
+</details>
+
 ---
 
-## 3. Sequence diagram — a single user query
+## 3. End-to-end flow — sequence diagram
 
-End-to-end: keystroke → SSE stream → both agents → progressive UI
-hydration.
+From keystroke to fully rendered UI: SSE stream, both agents, progressive hydration.
+
+![Sequence diagram](diagrams/sequence.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 sequenceDiagram
@@ -157,100 +158,127 @@ sequenceDiagram
   actor User
   participant UI as Next.js UI
   participant SC as streamClient
-  participant API as FastAPI /api/search
+  participant API as FastAPI
   participant ORCH as Orchestrator
   participant A1 as Crawler Agent
   participant A2 as Bias Agent
-  participant LLM
-  participant SRC as News Sources
+  participant LLM as Ollama
+  participant SRC as News APIs
 
-  User->>UI: type "South China Sea tensions"
+  User->>UI: submit query
   UI->>SC: streamSearch(query)
-  SC->>API: POST /api/search { query }
+  SC->>API: POST /api/search
   API->>ORCH: process_query(query)
 
-  rect rgb(245, 245, 250)
-    note over A1: Agent 1 — Crawler
-    ORCH->>A1: search(query)
-    A1->>LLM: expand(query)
+  rect rgb(235,245,255)
+    Note over A1: Agent 1 — Crawler
+    ORCH->>A1: iter_articles(query)
+    A1->>LLM: expand query
     LLM-->>A1: sub-queries
-    par per source
-      A1->>SRC: REST / RSS fetch
+    par per sub-query
+      A1->>SRC: NewsAPI + GNews
       SRC-->>A1: articles
     end
-    A1->>A1: extract + dedupe
+    A1->>A1: trafilatura + TF-IDF dedupe
     loop each article
       A1-->>ORCH: yield Article
-      ORCH-->>API: SSE: {type:"article"}
-      API-->>SC: data: {...}
+      ORCH-->>SC: SSE: article
       SC-->>UI: render ArticleCard
     end
+    ORCH-->>SC: SSE: crawl_done
+    SC-->>UI: status = analyzing
   end
 
-  rect rgb(250, 245, 240)
-    note over A2: Agent 2 — Bias Analyst
-    ORCH->>A2: analyze(bundle)
-    loop each article
-      A2->>LLM: analyze with source profile
+  rect rgb(255,245,235)
+    Note over A2: Agent 2 — Bias Analyst
+    par per article (concurrency=2)
+      ORCH->>A2: analyze_article
+      A2->>LLM: bias prompt json_mode
       LLM-->>A2: ArticleBiasAnalysis
+      A2-->>ORCH: analysis
+      ORCH-->>SC: SSE: article_analysis
+      SC-->>UI: badge ArticleCard
     end
-    A2->>LLM: compare + summarize
+    ORCH->>A2: final_report
+    A2->>LLM: compare prompt
     LLM-->>A2: BiasReport
-    A2-->>ORCH: BiasReport
-    ORCH-->>API: SSE: {type:"bias_report"}
-    API-->>SC: data: {...}
-    SC-->>UI: render BiasReportPanel + RegionMap highlights
+    ORCH-->>SC: SSE: bias_report
+    SC-->>UI: BiasReportPanel
   end
 
-  UI-->>User: streamed cards + bias spectrum + summary
+  UI-->>User: complete
 ```
+
+</details>
 
 ---
 
-## 4. Frontend component diagram
+## 4. React component tree — frontend diagram
 
-How the React components compose, and which data they consume.
+How the Next.js components compose and which data each consumes.
+
+![Frontend component diagram](diagrams/frontend.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart TB
-  Layout["app/layout.tsx<br/>ThemeProvider · TooltipProvider"]
-  Page["app/page.tsx<br/>(state: articles, analyses, biasReport)"]
+  Layout["layout.tsx\nThemeProvider · TooltipProvider"]
+  Page["page.tsx\nstatus · articles · analyses\nbiasReport · selectedCountry"]
   Layout --> Page
 
   Page --> Header
-  Page --> Search["SearchBar"]
-  Page --> Map["RegionMap (dynamic, ssr:false)"]
-  Page --> Cards["ArticleCard[]"]
+  Page --> Search["SearchBar\nAnalyze / Stop button"]
+  Page --> Map["RegionMap\ncountry-click filter"]
+  Page --> Cards["ArticleCard x N\nbias badge overlay"]
   Page --> Report["BiasReportPanel"]
 
   subgraph Header
     Logo
-    Toggle["ThemeToggle<br/>(next-themes · localStorage)"]
+    Toggle["ThemeToggle"]
   end
 
-  subgraph Report["BiasReportPanel (Tabs)"]
-    Summary["Summary tab"]
-    Spectrum["Spectrum tab → BiasSpectrum + SentimentChart (Recharts)"]
-    Patterns["Patterns tab"]
-    Method["Methodology tab"]
+  subgraph Report["BiasReportPanel Tabs"]
+    Summary["Summary"]
+    Spectrum["Spectrum\nBiasSpectrum · SentimentChart"]
+    Patterns["Patterns"]
+    Method["Methodology"]
+    Compass["Political Compass"]
   end
 
-  Cards -. clickable headline .-> External[("Original article<br/>(new tab)")]
-  Map -. fetches .-> Atlas[("world-atlas<br/>TopoJSON")]
+  Cards -. "open article" .-> External["Original article\nnew tab"]
+  Map -. "fetch" .-> Atlas["world-atlas TopoJSON"]
 ```
+
+</details>
 
 ---
 
-## 5. State machine — search lifecycle
+## 5. Search lifecycle — state machine
+
+Frontend status transitions driven by SSE events from the backend.
+
+![State machine](diagrams/state.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 stateDiagram-v2
   [*] --> Idle
   Idle --> Streaming : user submits query
-  Streaming --> Streaming : article event received
-  Streaming --> Done : bias_report event received
-  Streaming --> Error : network / 5xx
+  Streaming --> Streaming : article event
+  Streaming --> Analyzing : crawl_done event
+  Analyzing --> Analyzing : article_analysis event
+  Analyzing --> Done : bias_report received
+  Streaming --> Error : network or backend error
+  Analyzing --> Done : 180s safety-net timeout
   Error --> Streaming : user retries
   Done --> Streaming : new query
-  Done --> [*]
+  Done --> Idle : page reload
+  Streaming --> Idle : Stop button
+  Analyzing --> Idle : Stop button
 ```
+
+</details>
