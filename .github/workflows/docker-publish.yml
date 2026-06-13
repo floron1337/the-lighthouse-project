@@ -126,4 +126,3 @@ jobs:
         run: |
           vercel --prod --token "$VERCEL_TOKEN" --yes
           echo "✓ Frontend deployed to Vercel"
-        working-directory: frontend
