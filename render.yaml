@@ -14,6 +14,8 @@ services:
         value: llama3.2
       - key: OLLAMA_URL
         value: http://localhost:11434
+      - key: FRONTEND_URL
+        sync: false   # set to your Vercel URL, e.g. https://the-lighthouse-project.vercel.app
       - key: NEWSAPI_KEY
         sync: false
       - key: GNEWS_KEY
