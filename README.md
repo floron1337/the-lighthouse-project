@@ -20,7 +20,7 @@ Quick index for evaluators — every requirement, one click away.
 | **Automated tests + agent evals** | [`backend/tests/`](backend/tests/) (9 files) · [`frontend/__tests__/`](frontend/__tests__/) · [CI workflow](.github/workflows/backend-tests.yml) |
 | **Bug report + PR** | [THE-25 on Linear](https://linear.app/the-lighthouse-project/issue/THE-25/fix-map-displayed-at-top-of-search-view-after-search) · [PR #2](https://github.com/floron1337/the-lighthouse-project/pull/2) |
 | **CI pipeline** | [backend-tests.yml](.github/workflows/backend-tests.yml) · [frontend-tests.yml](.github/workflows/frontend-tests.yml) |
-| **CD pipeline** | [docker-publish.yml](.github/workflows/docker-publish.yml) — builds Docker images → pushes to GHCR → deploys to Render on every push to `main` |
+| **CD pipeline** | [docker-publish.yml](.github/workflows/docker-publish.yml) — builds → GHCR → deploys backend to Render + frontend to Vercel on every push to `main` |
 | **AI dev tools report** | [AI-Assisted Development Report](#ai-assisted-development-report) section below |
 
 ---
@@ -124,35 +124,46 @@ LLM_MOCK=false docker compose up --build
 
 ---
 
-## Deployment (Render)
+## Deployment
 
-The app is deployed to **[Render](https://render.com)** (free tier) via the [CD workflow](.github/workflows/docker-publish.yml). Every push to `main`:
-1. Builds and pushes Docker images to GitHub Container Registry (GHCR)
-2. Triggers a Render redeploy via deploy hooks
+Every push to `main` triggers the [CD workflow](.github/workflows/docker-publish.yml), which:
+1. Builds Docker images and pushes them to GHCR
+2. Redeploys the **backend** on [Render](https://render.com) (free tier, Docker)
+3. Redeploys the **frontend** on [Vercel](https://vercel.com) (free tier, Next.js)
 
-### First-time setup
+### One-time setup
+
+**Backend → Render**
 
 1. Go to [render.com](https://render.com) → **New** → **Blueprint** → connect this repo.  
-   Render reads [`render.yaml`](render.yaml) and creates both services automatically.
+   Render reads [`render.yaml`](render.yaml) and creates the `lighthouse-backend` service.
+2. Note the service URL (e.g. `https://lighthouse-backend-xxxx.onrender.com`).
+3. Go to `lighthouse-backend` → **Settings** → **Deploy Hook** → copy the URL.
+4. Add it to GitHub: `repo Settings → Secrets → Actions → New secret`:
 
-2. After the first deploy, grab the deploy hook URL for each service:  
-   `Service → Settings → Deploy Hook → Copy URL`
-
-3. Add both URLs as GitHub repository secrets  
-   (`Settings → Secrets → Actions → New repository secret`):
-
-   | Secret name | Value |
+   | Secret | Value |
    |---|---|
-   | `RENDER_BACKEND_DEPLOY_HOOK_URL` | Hook URL from the `lighthouse-backend` service |
-   | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Hook URL from the `lighthouse-frontend` service |
+   | `RENDER_BACKEND_DEPLOY_HOOK_URL` | deploy hook URL from step 3 |
 
-4. Set `NEXT_PUBLIC_BACKEND_URL` in the `lighthouse-frontend` service on Render to the actual backend URL (e.g. `https://lighthouse-backend.onrender.com`).
+**Frontend → Vercel**
 
-Once secrets are in place, every push to `main` automatically rebuilds and redeploys both services.
+1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import this repo.  
+   Select `frontend/` as the root directory. Vercel auto-detects Next.js.
+2. In the project's **Environment Variables**, add:  
+   `NEXT_PUBLIC_BACKEND_URL` = the Render backend URL from above (e.g. `https://lighthouse-backend-xxxx.onrender.com`)
+3. Get the three CI credentials and add them as GitHub secrets:
 
-> **Note:** The free tier spins services down after 15 minutes of inactivity. The first request after spin-down takes ~30 seconds to wake up.
+   | Secret | Where to find it |
+   |---|---|
+   | `VERCEL_TOKEN` | vercel.com → Account Settings → Tokens → Create |
+   | `VERCEL_ORG_ID` | vercel.com → Account Settings → General → Team ID (or your personal account ID) |
+   | `VERCEL_PROJECT_ID` | Vercel project → Settings → General → Project ID |
 
-Pre-built images are also available from GHCR:
+Once all four secrets are set, every push to `main` fully redeploys both services. The frontend is live at your Vercel project URL (e.g. `https://the-lighthouse-project.vercel.app`).
+
+> **Note:** Render free tier spins down after 15 min of inactivity — the first request after sleep takes ~30 s.
+
+Pre-built images are also available directly from GHCR:
 
 ```bash
 docker pull ghcr.io/floron1337/the-lighthouse-project/backend:latest

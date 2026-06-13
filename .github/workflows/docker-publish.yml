@@ -20,18 +20,15 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.BACKEND_IMAGE }}
@@ -39,11 +36,9 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push backend
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
@@ -61,18 +56,15 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.FRONTEND_IMAGE }}
@@ -80,11 +72,9 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push frontend
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
@@ -93,27 +83,47 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── 3. Trigger Render redeployment ──────────────────────────────────────────
-  # Steps are skipped automatically when the deploy hook secrets are not set.
-  # See README "Deployment" section for how to obtain the hook URLs.
-  deploy:
-    name: Deploy to Render
-    needs: [build-backend, build-frontend]
+  # ── 3. Deploy backend to Render ─────────────────────────────────────────────
+  # Skipped automatically when RENDER_BACKEND_DEPLOY_HOOK_URL is not configured.
+  deploy-backend:
+    name: Deploy backend → Render
+    needs: build-backend
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy backend
+      - name: Trigger redeploy
         if: env.HOOK != ''
         env:
           HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}
         run: |
           curl -fsS --retry 3 "$HOOK"
-          echo "Backend redeploy triggered"
+          echo "✓ Backend redeploy triggered"
 
-      - name: Deploy frontend
-        if: env.HOOK != ''
+  # ── 4. Deploy frontend to Vercel ────────────────────────────────────────────
+  # Skipped automatically when VERCEL_TOKEN is not configured.
+  # NEXT_PUBLIC_BACKEND_URL is set once in the Vercel project's Environment
+  # Variables dashboard — it does not need to be passed from CI.
+  deploy-frontend:
+    name: Deploy frontend → Vercel
+    needs: build-frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        if: env.VERCEL_TOKEN != ''
         env:
-          HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npm install -g vercel@latest
+
+      - name: Deploy to Vercel (production)
+        if: env.VERCEL_TOKEN != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          curl -fsS --retry 3 "$HOOK"
-          echo "Frontend redeploy triggered"
+          vercel --prod --token "$VERCEL_TOKEN" --yes
+          echo "✓ Frontend deployed to Vercel"
+        working-directory: frontend
