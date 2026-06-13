@@ -1,0 +1,39 @@
+services:
+  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
+  - type: web
+    name: lighthouse-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: frankfurt
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_MOCK
+        value: "true"           # set to "false" only if you attach an Ollama instance
+      - key: OLLAMA_MODEL
+        value: llama3.2
+      - key: OLLAMA_URL
+        value: http://localhost:11434
+      - key: NEWSAPI_KEY
+        sync: false             # fill in via Render dashboard
+      - key: GNEWS_KEY
+        sync: false             # fill in via Render dashboard
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+  # Uses Render's native Node runtime so NEXT_PUBLIC_* vars are injected at
+  # build time without needing Docker build-arg pass-through.
+  - type: web
+    name: lighthouse-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    region: frankfurt
+    plan: free
+    envVars:
+      - key: NEXT_PUBLIC_BACKEND_URL
+        # Replace with your actual backend URL after the first deploy.
+        value: https://lighthouse-backend.onrender.com
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

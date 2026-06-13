@@ -1,4 +1,4 @@
-name: CD — Build & Publish Docker Images
+name: CD — Build, Publish & Deploy
 
 on:
   push:
@@ -11,6 +11,7 @@ env:
   FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend
 
 jobs:
+  # ── 1. Build & push backend image to GHCR ───────────────────────────────────
   build-backend:
     name: Build backend image
     runs-on: ubuntu-latest
@@ -51,6 +52,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── 2. Build & push frontend image to GHCR ──────────────────────────────────
   build-frontend:
     name: Build frontend image
     runs-on: ubuntu-latest
@@ -90,3 +92,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── 3. Trigger Render redeployment ──────────────────────────────────────────
+  # Steps are skipped automatically when the deploy hook secrets are not set.
+  # See README "Deployment" section for how to obtain the hook URLs.
+  deploy:
+    name: Deploy to Render
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy backend
+        if: env.HOOK != ''
+        env:
+          HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}
+        run: |
+          curl -fsS --retry 3 "$HOOK"
+          echo "Backend redeploy triggered"
+
+      - name: Deploy frontend
+        if: env.HOOK != ''
+        env:
+          HOOK: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}
+        run: |
+          curl -fsS --retry 3 "$HOOK"
+          echo "Frontend redeploy triggered"

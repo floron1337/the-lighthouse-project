@@ -20,7 +20,7 @@ Quick index for evaluators — every requirement, one click away.
 | **Automated tests + agent evals** | [`backend/tests/`](backend/tests/) (9 files) · [`frontend/__tests__/`](frontend/__tests__/) · [CI workflow](.github/workflows/backend-tests.yml) |
 | **Bug report + PR** | [THE-25 on Linear](https://linear.app/the-lighthouse-project/issue/THE-25/fix-map-displayed-at-top-of-search-view-after-search) · [PR #2](https://github.com/floron1337/the-lighthouse-project/pull/2) |
 | **CI pipeline** | [backend-tests.yml](.github/workflows/backend-tests.yml) · [frontend-tests.yml](.github/workflows/frontend-tests.yml) |
-| **CD pipeline** | [docker-publish.yml](.github/workflows/docker-publish.yml) — builds & pushes Docker images to GHCR on every push to `main` |
+| **CD pipeline** | [docker-publish.yml](.github/workflows/docker-publish.yml) — builds Docker images → pushes to GHCR → deploys to Render on every push to `main` |
 | **AI dev tools report** | [AI-Assisted Development Report](#ai-assisted-development-report) section below |
 
 ---
@@ -112,7 +112,7 @@ Ollama's `/api/generate` endpoint using `OLLAMA_MODEL`.
 
 ---
 
-## Docker
+## Docker (local)
 
 ```bash
 # Run the full stack with Docker Compose (mock LLM, no Ollama required)
@@ -122,7 +122,37 @@ docker compose up --build
 LLM_MOCK=false docker compose up --build
 ```
 
-Production images are automatically built and published to the GitHub Container Registry on every push to `main` by the [CD workflow](.github/workflows/docker-publish.yml):
+---
+
+## Deployment (Render)
+
+The app is deployed to **[Render](https://render.com)** (free tier) via the [CD workflow](.github/workflows/docker-publish.yml). Every push to `main`:
+1. Builds and pushes Docker images to GitHub Container Registry (GHCR)
+2. Triggers a Render redeploy via deploy hooks
+
+### First-time setup
+
+1. Go to [render.com](https://render.com) → **New** → **Blueprint** → connect this repo.  
+   Render reads [`render.yaml`](render.yaml) and creates both services automatically.
+
+2. After the first deploy, grab the deploy hook URL for each service:  
+   `Service → Settings → Deploy Hook → Copy URL`
+
+3. Add both URLs as GitHub repository secrets  
+   (`Settings → Secrets → Actions → New repository secret`):
+
+   | Secret name | Value |
+   |---|---|
+   | `RENDER_BACKEND_DEPLOY_HOOK_URL` | Hook URL from the `lighthouse-backend` service |
+   | `RENDER_FRONTEND_DEPLOY_HOOK_URL` | Hook URL from the `lighthouse-frontend` service |
+
+4. Set `NEXT_PUBLIC_BACKEND_URL` in the `lighthouse-frontend` service on Render to the actual backend URL (e.g. `https://lighthouse-backend.onrender.com`).
+
+Once secrets are in place, every push to `main` automatically rebuilds and redeploys both services.
+
+> **Note:** The free tier spins services down after 15 minutes of inactivity. The first request after spin-down takes ~30 seconds to wake up.
+
+Pre-built images are also available from GHCR:
 
 ```bash
 docker pull ghcr.io/floron1337/the-lighthouse-project/backend:latest
