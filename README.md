@@ -12,6 +12,7 @@ Quick index for evaluators — every requirement, one click away.
 
 | Requirement | Where to find it |
 |---|---|
+| **Recorded Demo** | https://www.youtube.com/watch?v=ZMa6uNEXhyU |
 | **Live demo** | Running app at `localhost:3000` after setup below |
 | **2 AI agents** | [DESIGN.md — Agent 1 & Agent 2](DESIGN.md) · [AI Tools Usage Report](#ai-tools-usage-report) |
 | **User stories & backlog** | [Linear project board](https://linear.app/the-lighthouse-project/project/lighthouse-news-bias-report-d2f5d9dca425/overview) |
