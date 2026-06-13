@@ -72,7 +72,12 @@ export default function RegionMap({ articles, selectedCountry, onCountryClick }:
               geographies.map((geo) => {
                 const id = String(geo.id).padStart(3, "0");
                 const data = counts.get(id);
-                const isSelected = data != null && selectedCountry === data.iso2;
+                const sourceData =
+                  data && data.sources.size > 0 ? data : null;
+                const hasSources = sourceData != null;
+                const countryName = geo.properties?.name ?? "Country";
+                const isSelected =
+                  sourceData != null && selectedCountry === sourceData.iso2;
                 const isDimmed = selectedCountry != null && !isSelected;
                 const intensity = data ? data.count / maxCount : 0;
                 const fill = isSelected
@@ -90,10 +95,24 @@ export default function RegionMap({ articles, selectedCountry, onCountryClick }:
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    onClick={() => {
-                      if (!data || !onCountryClick) return;
-                      onCountryClick(isSelected ? null : data.iso2);
-                    }}
+                    aria-label={
+                      sourceData
+                        ? `${countryName}: ${sourceData.count} article${
+                            sourceData.count !== 1 ? "s" : ""
+                          }`
+                        : `${countryName}: no news sources`
+                    }
+                    aria-disabled={!hasSources}
+                    data-has-news-sources={hasSources}
+                    onClick={
+                      sourceData && onCountryClick
+                        ? () => {
+                            onCountryClick(
+                              isSelected ? null : sourceData.iso2
+                            );
+                          }
+                        : undefined
+                    }
                     style={{
                       default: {
                         fill,
@@ -109,28 +128,37 @@ export default function RegionMap({ articles, selectedCountry, onCountryClick }:
                         stroke: "hsl(var(--accent))",
                         strokeWidth: 0.9,
                         outline: "none",
-                        cursor: data ? "pointer" : "default",
+                        cursor: hasSources ? "pointer" : "default",
                       },
                       pressed: {
-                        fill: "hsl(var(--accent))",
+                        fill: hasSources
+                          ? "hsl(var(--accent))"
+                          : "hsl(var(--muted-foreground) / 0.35)",
                         outline: "none",
                       },
                     }}
                   />
                 );
 
-                if (!data) return geography;
                 return (
                   <Tooltip key={geo.rsmKey}>
                     <TooltipTrigger asChild>{geography}</TooltipTrigger>
                     <TooltipContent side="top">
                       <div className="space-y-1">
                         <div className="font-semibold flex items-center gap-1.5">
-                          {geo.properties?.name ?? "Country"}
+                          {countryName}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {data.count} article{data.count !== 1 ? "s" : ""} · {Array.from(data.sources).join(", ")}
-                        </div>
+                        {sourceData ? (
+                          <div className="text-xs text-muted-foreground">
+                            {sourceData.count} article
+                            {sourceData.count !== 1 ? "s" : ""} ·{" "}
+                            {Array.from(sourceData.sources).join(", ")}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            No news sources for this query
+                          </div>
+                        )}
                       </div>
                     </TooltipContent>
                   </Tooltip>
